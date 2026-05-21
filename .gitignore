@@ -22,3 +22,9 @@ Push_to_GitHub.bat
 Start_Auto_Update.bat
 run_background.vbs
 db_test.py
+
+# ── 原始碼與文件（本地端自行備份）────────────────────────────────────────────
+*.py
+*.md
+*.vbs
+*.bat
