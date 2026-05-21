@@ -20,6 +20,7 @@ CATEGORIES = [
     {"name": "熱排氣",   "pattern": "HSCR",  "icon": "🔥", "desc": "Hot Scrubber"},
     {"name": "乾式集塵", "pattern": "DUST",  "exclude": "WDUST", "icon": "🧹", "desc": "Dry Dust"},
     {"name": "溼式集塵", "pattern": "WDUST", "icon": "💧", "desc": "Wet Dust"},
+    {"name": "製程冷卻水","pattern": "PCW",   "icon": "🌊", "desc": "PCW"},
     {"name": "其他設備", "pattern": None,    "icon": "⚙️", "desc": "Other"},
 ]
 
@@ -36,6 +37,7 @@ def classify_equipment(eqno: str) -> str:
     if "HSCR"  in u: return "熱排氣"
     if "WDUST" in u: return "溼式集塵"
     if "DUST"  in u: return "乾式集塵"
+    if "PCW"   in u: return "製程冷卻水"
     return "其他設備"
 
 
@@ -235,10 +237,30 @@ def create_status_dashboard(df: pd.DataFrame, output_path: str = "index.html"):
 <div id="pc-{plant}" class="plant-container {ac}" {d_style}>
   <div class="eq-area">"""
 
-        for cat in CATEGORIES:
+        # ── 自動展開：「其他設備」依 EQNO 前綴自動分群 ──────────────────────
+        # 已知類別照 CATEGORIES 順序顯示；
+        # 落入「其他設備」的設備依前綴字母自動拆成子群，日後新設備類型也能整齊顯示。
+        import re as _re
+        from collections import defaultdict as _dd
+        _disp = []
+        for _c in CATEGORIES:
+            if _c['name'] != '其他設備':
+                _disp.append((_c, grouped[_c['name']]))
+            else:
+                _oth = grouped['其他設備']
+                if _oth:
+                    _pm = _dd(list)
+                    for _r in _oth:
+                        _m = _re.match(r'^([A-Za-z]+(?:_[A-Za-z]+)*)',
+                                       str(_r['EQNO']).strip())
+                        _pm[(_m.group(1).upper() if _m else 'UNK')].append(_r)
+                    for _pfx in sorted(_pm):
+                        _disp.append(({'name': _pfx, 'icon': '⚙️', 'desc': _pfx},
+                                      _pm[_pfx]))
+
+        for cat, items in _disp:
             cname = cat['name']
-            items = grouped[cname]
-            if cname == "其他設備" and not items:
+            if not items:
                 continue
             ct    = len(items)
             cr    = sum(r['VALUE'] >= 10.0 for r in items)
@@ -853,10 +875,18 @@ body{
 
 
 if __name__ == "__main__":
-    try:
-        print("本地測試模式...")
-        test_df = pd.read_csv("test_data.csv")
-        create_status_dashboard(test_df, "index.html")
-        print("完成。")
-    except FileNotFoundError:
-        print("找不到 test_data.csv")
+    # 優先使用最新 MSSQL 備份（latest_data_backup.csv），其次才用 test_data.csv
+    # 確保手動執行時也能拿到最新的設備資料，不會因舊資料導致類別消失
+    import sys
+    candidates = ["latest_data_backup.csv", "test_data.csv"]
+    loaded = False
+    for csv_file in candidates:
+        if os.path.exists(csv_file):
+            print(f"本地測試模式：使用 {csv_file}")
+            test_df = pd.read_csv(csv_file)
+            create_status_dashboard(test_df, "index.html")
+            print("完成。")
+            loaded = True
+            break
+    if not loaded:
+        print("找不到可用的 CSV 資料（latest_data_backup.csv / test_data.csv），請先執行 main.py 或 db_test.py 產生備份資料。")
