@@ -16,3 +16,9 @@ __pycache__/
 .venv/
 venv/
 env/
+
+# ── 本機執行工具（Windows 專用，不需公開）────────────────────────────────────
+Push_to_GitHub.bat
+Start_Auto_Update.bat
+run_background.vbs
+db_test.py
