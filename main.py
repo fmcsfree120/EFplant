@@ -4,7 +4,9 @@ import schedule
 import time
 import subprocess
 import os
+import sys
 import json
+import socket
 from datetime import datetime
 from generate_dashboard import create_status_dashboard
 import warnings
@@ -12,6 +14,26 @@ import warnings
 warnings.filterwarnings('ignore', '.*pandas only supports SQLAlchemy.*')
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# ── 防止重複啟動（使用 Port 佔用作為 mutex）──────────────────────────────────
+_LOCK_SOCKET = None
+
+def acquire_single_instance_lock():
+    """
+    嘗試綁定一個本機 port 作為程序鎖。
+    若已有另一個 EFplant 在執行，此 port 已被佔用，直接結束。
+    """
+    global _LOCK_SOCKET
+    _LOCK_SOCKET = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    _LOCK_SOCKET.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 0)
+    try:
+        _LOCK_SOCKET.bind(('127.0.0.1', 47312))   # EFplant 專用 port（不對外開放）
+    except OSError:
+        print("=" * 52)
+        print("  [WARN] EFplant 服務已在執行中，不重複啟動。")
+        print("  若要重啟，請先在工作管理員結束 python.exe。")
+        print("=" * 52)
+        sys.exit(0)
 
 
 def load_config():
@@ -192,6 +214,7 @@ def fetch_data_and_update():
 # ── 程式進入點 ────────────────────────────────────────────────────────────────
 
 def main():
+    acquire_single_instance_lock()   # 確保只有一個實例在執行
     print("=" * 52)
     print("  EFplant 自動化排程服務 啟動")
     print("=" * 52)
