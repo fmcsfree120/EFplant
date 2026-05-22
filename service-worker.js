@@ -31,8 +31,9 @@ self.addEventListener('fetch', function(e) {
                       path.endsWith('/index.html') ||
                       path.endsWith('index.html'));
     var isHealthJson = path.endsWith('health.json');
+    var isDataEnc    = path.endsWith('data.enc');
 
-    if (isMainPage || isHealthJson) {
+    if (isMainPage || isHealthJson || isDataEnc) {
         e.respondWith(
             fetch(e.request, { cache: 'no-store' })
                 .catch(function() {
