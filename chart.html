@@ -441,7 +441,13 @@ footer {
   </div>
 
   <footer>
-    EFplant FMCS Smart Plant Integration &copy; 2026
+    EFplant FMCS Smart Plant Integration &copy; 2026<br>
+    <button onclick="reloadKeepSess()" 
+            style="background:transparent;border:none;color:var(--dim);
+                   font-family:var(--mono);font-size:.65rem;cursor:pointer;
+                   letter-spacing:0.5px;margin-top:6px;font-weight:600;text-decoration:underline;">
+      &#x1F504; 清除快取重新整理
+    </button>
   </footer>
 </div>
 
@@ -617,12 +623,7 @@ function renderChartData() {
             formatter: `控制線 ${meta.normalVal}`,
             color: '#10b981',
             fontSize: 9,
-            fontFamily: 'Share Tech Mono, monospace',
-            backgroundColor: 'rgba(15, 23, 42, 0.85)',
-            borderColor: '#10b981',
-            borderWidth: 1,
-            padding: [2, 4],
-            borderRadius: 2
+            fontFamily: 'Share Tech Mono, monospace'
           }
         },
         {
@@ -634,12 +635,7 @@ function renderChartData() {
             formatter: `預警線 ${meta.warningVal}`,
             color: '#f59e0b',
             fontSize: 9,
-            fontFamily: 'Share Tech Mono, monospace',
-            backgroundColor: 'rgba(15, 23, 42, 0.85)',
-            borderColor: '#f59e0b',
-            borderWidth: 1,
-            padding: [2, 4],
-            borderRadius: 2
+            fontFamily: 'Share Tech Mono, monospace'
           }
         }
       ]
@@ -950,6 +946,31 @@ window.addEventListener('DOMContentLoaded', function() {
     window.location.replace("index.html");
   });
 });
+
+function reloadKeepSess() {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then(function(regs) {
+      var promises = [];
+      for (var i = 0; i < regs.length; i++) {
+        promises.push(regs[i].unregister());
+      }
+      return Promise.all(promises);
+    }).then(function() {
+      if ('caches' in window) {
+        return caches.keys().then(function(keys) {
+          return Promise.all(keys.map(function(k) { return caches.delete(k); }));
+        });
+      }
+    }).then(function() {
+      var base = location.protocol + '//' + location.host + location.pathname;
+      location.replace(base + '?_nc=' + Date.now());
+    }).catch(function() {
+      location.reload();
+    });
+    return;
+  }
+  location.reload();
+}
 </script>
 
 </body>
