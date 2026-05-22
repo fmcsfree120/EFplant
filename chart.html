@@ -37,6 +37,8 @@
   --tx: #f1f5f9;      /* 近白色文字 */
   --dim: #a2b9d2;     /* 亮灰藍色（易讀性高） */
   --mono: 'Share Tech Mono', Consolas, Monaco, monospace;
+  --run: #10b981;     /* Solid Emerald Green */
+  --stop: #ef4444;    /* Solid Red */
 }
 
 * {
@@ -119,16 +121,42 @@ header {
   font-weight: 600;
 }
 
-.status-badge {
+.upd {
   margin-left: auto;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-family: var(--mono);
   font-size: 0.72rem;
   color: var(--amb);
-  border: 1px solid var(--amb);
-  padding: 2px 6px;
-  border-radius: 3px;
-  background: rgba(245, 158, 11, 0.05);
-  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+.pulse {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--dim);
+  flex-shrink: 0;
+  transition: all 0.5s;
+  cursor: help;
+}
+.pulse.ok {
+  background: var(--run);
+  box-shadow: 0 0 6px var(--run);
+}
+.pulse.warn {
+  background: var(--amb);
+  box-shadow: 0 0 6px var(--amb);
+}
+.pulse.bad {
+  background: var(--stop);
+  box-shadow: 0 0 8px var(--stop);
+  animation: blink 1.5s infinite;
+}
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
 }
 
 /* MAIN CONTENT AREA */
@@ -364,14 +392,17 @@ footer {
   <div class="brand">
     <span class="bname">EFplant</span>
   </div>
-  <div class="status-badge" id="time-badge">HISTORICAL / 168 HR</div>
+  <div class="upd">
+    <span class="pulse" id="status-pulse" title="checking..."></span>
+    <span id="next-update-time">NEXT: --/-- --:--</span>
+  </div>
 </header>
 
 <div class="main-container">
   <!-- 能效數據切換 Tabs -->
   <div class="tabs-container">
-    <button class="tab-btn active" id="tab-ch" onclick="switchMetric('冰機效率', this)">冰機效率 (kW/RT)</button>
-    <button class="tab-btn" id="tab-cda" onclick="switchMetric('空壓效率', this)">空壓效率 (CMM/KWH)</button>
+    <button class="tab-btn active" id="tab-ch" onclick="switchMetric('冰機效率', this)">冰機效率</button>
+    <button class="tab-btn" id="tab-cda" onclick="switchMetric('空壓效率', this)">空壓效率</button>
   </div>
 
   <!-- 折線圖面板 -->
@@ -622,7 +653,11 @@ function renderChartData() {
         if (!params || params.length === 0) return '';
         
         // 篩選出有真實有效數據點的廠區
-        const validParams = params.filter(p => p.value !== undefined && p.value !== null && !isNaN(p.value) && p.value !== '');
+        const validParams = params.filter(p => {
+          let val = p.value;
+          if (Array.isArray(val)) val = val[1];
+          return val !== undefined && val !== null && val !== '' && typeof val !== 'object' && !isNaN(parseFloat(val));
+        });
         if (validParams.length === 0) return '';
         
         let html = `<div style="font-family: inherit; font-size: 13px; line-height: 1.6; color: #f1f5f9; min-width: 200px;">`;
@@ -750,6 +785,49 @@ window.addEventListener('resize', function() {
   }
 });
 
+var GEN_TIME = null;
+
+function initStatusPulse(updatedTimeStr) {
+  GEN_TIME = new Date(updatedTimeStr);
+  
+  // 計算下一次更新整點時間
+  var nextHour = new Date(GEN_TIME.getTime() + 60 * 60 * 1000);
+  nextHour.setMinutes(0);
+  nextHour.setSeconds(0);
+  nextHour.setMilliseconds(0);
+  
+  var mm = String(nextHour.getMonth() + 1).padStart(2, '0');
+  var dd = String(nextHour.getDate()).padStart(2, '0');
+  var hh = String(nextHour.getHours()).padStart(2, '0');
+  var nextStr = mm + '/' + dd + ' ' + hh + ':00';
+  
+  var nextEl = document.getElementById('next-update-time');
+  if (nextEl) {
+    nextEl.textContent = 'NEXT: ' + nextStr;
+  }
+  
+  updateStatus();
+  setInterval(updateStatus, 60000);
+}
+
+function updateStatus() {
+  if (!GEN_TIME) return;
+  const minPast = (Date.now() - GEN_TIME) / 60000;
+  const p = document.getElementById('status-pulse');
+  if (!p) return;
+  const INTERVAL_MIN = 60, GRACE_MIN = 15;
+  if (minPast < INTERVAL_MIN + GRACE_MIN) {
+    p.className = 'pulse ok';
+    p.title = 'DATA OK — generated ' + GEN_TIME.toLocaleTimeString() + ' | Next update ~' + new Date(GEN_TIME.getTime() + (INTERVAL_MIN + GRACE_MIN) * 60000).toLocaleTimeString();
+  } else if (minPast < INTERVAL_MIN * 2 + GRACE_MIN) {
+    p.className = 'pulse warn';
+    p.title = 'UPDATE OVERDUE — refresh page for new data';
+  } else {
+    p.className = 'pulse bad';
+    p.title = 'PIPELINE BROKEN — check main.py is running';
+  }
+}
+
 window.addEventListener('DOMContentLoaded', function() {
   var dkh = loadSess();
   if (!dkh) {
@@ -768,6 +846,11 @@ window.addEventListener('DOMContentLoaded', function() {
     var parsed = JSON.parse(decrypted);
     chartTimestamps = parsed.timestamps || [];
     chartSeriesData = parsed.metrics || {};
+    
+    // 初始化運轉狀態燈號與下一次更新倒數
+    if (data.updated) {
+      initStatusPulse(data.updated);
+    }
     
     // 初始化卡片數據
     document.getElementById('card-lbl-normal').textContent = '正常運轉控制線';
