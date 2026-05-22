@@ -658,32 +658,14 @@ function renderChartData() {
           yAxis: meta.controlVal,
           lineStyle: { color: '#10b981', type: 'dashed', width: 1.5, opacity: 0.8 },
           label: {
-            show: true,
-            position: 'insideEndTop',
-            formatter: `控制線 ${meta.normalVal}`,
-            color: '#10b981',
-            fontSize: 9,
-            fontFamily: 'Share Tech Mono, monospace',
-            backgroundColor: 'transparent',
-            borderColor: 'transparent',
-            borderWidth: 0,
-            padding: 0
+            show: false
           }
         },
         {
           yAxis: meta.warningValNum,
           lineStyle: { color: '#f59e0b', type: 'dashed', width: 1.5, opacity: 0.8 },
           label: {
-            show: true,
-            position: 'insideEndBottom',
-            formatter: `預警線 ${meta.warningVal}`,
-            color: '#f59e0b',
-            fontSize: 9,
-            fontFamily: 'Share Tech Mono, monospace',
-            backgroundColor: 'transparent',
-            borderColor: 'transparent',
-            borderWidth: 0,
-            padding: 0
+            show: false
           }
         }
       ]
