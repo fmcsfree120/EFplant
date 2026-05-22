@@ -327,6 +327,19 @@ header {
   font-size: 1.15rem;
   font-weight: 700;
   line-height: 1.2;
+  white-space: nowrap;
+}
+
+@media (max-width: 600px) {
+  .metric-info-grid {
+    grid-template-columns: 1.1fr 0.9fr;
+  }
+  .info-card {
+    padding: 8px 8px;
+  }
+  .info-val {
+    font-size: 0.95rem;
+  }
 }
 
 .info-card.normal .info-val { color: #10b981; }
@@ -365,7 +378,7 @@ footer {
   <div class="chart-card">
     <div class="chart-header">
       <div class="chart-title-group">
-        <div class="chart-title">冰機運轉效率趨勢圖 (Chiller Efficiency)</div>
+        <div class="chart-title">冰機運轉效率趨勢圖</div>
         <div class="chart-subtitle">各廠區冰機綜合效率 (kW/RT，越低代表能效表現越佳)</div>
       </div>
       
@@ -672,7 +685,7 @@ function switchMetric(metric, btn) {
   const titleEl = document.querySelector('.chart-title');
   const subEl = document.querySelector('.chart-subtitle');
   if (metric === '冰機效率') {
-    if (titleEl) titleEl.textContent = '冰機運轉效率趨勢圖 (Chiller Efficiency)';
+    if (titleEl) titleEl.textContent = '冰機運轉效率趨勢圖';
     if (subEl) subEl.textContent = '各廠區冰機綜合效率 (kW/RT，越低代表能效表現越佳)';
     
     // 更新底部 SCADA 卡片
@@ -681,7 +694,7 @@ function switchMetric(metric, btn) {
     document.getElementById('card-lbl-warning').textContent = '預警警報限制線 (HIGH)';
     document.getElementById('card-val-warning').textContent = '0.85 kW/RT';
   } else {
-    if (titleEl) titleEl.textContent = '空壓運轉效率趨勢圖 (Compressed Air Efficiency)';
+    if (titleEl) titleEl.textContent = '空壓運轉效率趨勢圖';
     if (subEl) subEl.textContent = '各廠區空壓系統綜合效率 (CMM/KWH，越高代表能效表現越佳)';
     
     // 更新底部 SCADA 卡片
