@@ -258,9 +258,25 @@ header {
 /* CHART RENDER CONTAINER */
 .chart-viewport {
   width: 100%;
-  height: 52vh;
+  height: 50vh;
   min-height: 380px;
   position: relative;
+}
+
+/* 手機直向 portrait */
+@media (max-width: 600px) and (orientation: portrait) {
+  .chart-viewport {
+    height: 340px;
+    min-height: 300px;
+  }
+}
+
+/* 手機橫向 landscape */
+@media (max-height: 600px) and (orientation: landscape) {
+  .chart-viewport {
+    height: 220px;
+    min-height: 180px;
+  }
 }
 
 /* SCADA METRIC INFO GRID */
@@ -269,12 +285,6 @@ header {
   grid-template-columns: repeat(2, 1fr);
   gap: 8px;
   margin-top: 4px;
-}
-
-@media (min-width: 600px) {
-  .metric-info-grid {
-    grid-template-columns: repeat(4, 1fr);
-  }
 }
 
 .info-card {
@@ -323,7 +333,6 @@ footer {
   <a href="index.html" class="back-btn">&#x2190; BACK</a>
   <div class="brand">
     <span class="bname">EFplant</span>
-    <span class="bsub">水質品質即時趨勢圖</span>
   </div>
   <div class="status-badge" id="time-badge">HISTORICAL / 168 HR</div>
 </header>
@@ -331,11 +340,11 @@ footer {
 <div class="main-container">
   <!-- 品質數據切換 Tabs -->
   <div class="tabs-container">
-    <button class="tab-btn active">純水導電度 / DI Water Conductivity</button>
-    <button class="tab-btn disabled" disabled>矽酸矽 / Silica (WIP)</button>
-    <button class="tab-btn disabled" disabled>總有機碳 / TOC (WIP)</button>
-    <button class="tab-btn disabled" disabled>溶解氧 / DO (WIP)</button>
-    <button class="tab-btn disabled" disabled>酸鹼值 / pH (WIP)</button>
+    <button class="tab-btn active">純水導電度</button>
+    <button class="tab-btn disabled" disabled>矽酸矽 (WIP)</button>
+    <button class="tab-btn disabled" disabled>總有機碳 (WIP)</button>
+    <button class="tab-btn disabled" disabled>溶解氧 (WIP)</button>
+    <button class="tab-btn disabled" disabled>酸鹼值 (WIP)</button>
   </div>
 
   <!-- 折線圖面板 -->
@@ -363,20 +372,12 @@ footer {
     <!-- 底部 SCADA 導電度標準與指標 -->
     <div class="metric-info-grid">
       <div class="info-card normal">
-        <div class="info-lbl">超純水理論極限</div>
-        <div class="info-val">0.055 μS/cm</div>
-      </div>
-      <div class="info-card normal">
         <div class="info-lbl">正常品質控制閥</div>
         <div class="info-val">&lt; 0.100 μS/cm</div>
       </div>
       <div class="info-card warning">
         <div class="info-lbl">預警警報線 (HIGH)</div>
         <div class="info-val">0.120 μS/cm</div>
-      </div>
-      <div class="info-card normal">
-        <div class="info-lbl">採樣頻率</div>
-        <div class="info-val">1 HR / 點</div>
       </div>
     </div>
   </div>
@@ -511,7 +512,7 @@ function initChart() {
     backgroundColor: 'transparent',
     grid: {
       top: 35,
-      bottom: 60,
+      bottom: 85,
       left: 55,
       right: 25,
       containLabel: false
@@ -571,15 +572,10 @@ function initChart() {
         lineStyle: { color: 'rgba(51, 65, 85, 0.35)' }
       }
     },
-    // ECharts 內建 DataZoom 工具 (底部的縮放控制滑軌，預設隱藏以配合頂部快捷按鈕)
+    // ECharts 內建 DataZoom 工具 (只使用隱藏的 slider 以供 API 調度，不啟用 inside 以免拖曳時背景跟著移動)
     dataZoom: [
       {
-        type: 'inside', // 支援滑鼠滾輪與手機雙指觸控手勢縮放
-        start: 0,
-        end: 100
-      },
-      {
-        type: 'slider', // 底部隱密滑動條，不干擾視覺
+        type: 'slider',
         show: false,
         start: 0,
         end: 100
@@ -594,6 +590,38 @@ function initChart() {
       padding: [10, 14],
       textStyle: {
         color: '#f1f5f9'
+      },
+      // 智慧浮動位置：依游標左右智慧換邊，防止行動裝置小螢幕超出邊界
+      position: function (point, params, dom, rect, size) {
+        var x = point[0];
+        var y = point[1];
+        var viewW = size.viewSize[0];
+        var viewH = size.viewSize[1];
+        var boxW = size.contentSize[0];
+        var boxH = size.contentSize[1];
+        
+        // 游標在右側時放在左邊，左側時放在右邊，保持 15px 間距
+        var posX = 0;
+        if (x > viewW / 2) {
+          posX = x - boxW - 15;
+        } else {
+          posX = x + 15;
+        }
+        
+        // 邊界溢出保護
+        if (posX < 5) posX = 5;
+        if (posX + boxW > viewW - 5) {
+          posX = viewW - boxW - 5;
+        }
+        
+        // Y 軸置中，防上下溢出
+        var posY = y - boxH / 2;
+        if (posY < 5) posY = 5;
+        if (posY + boxH > viewH - 5) {
+          posY = viewH - boxH - 5;
+        }
+        
+        return [posX, posY];
       },
       // 自訂渲染 Formatter 函數
       formatter: function (params) {
@@ -623,7 +651,7 @@ function initChart() {
     // 底部圖例 (Legend) - 與 MacroMicro 風格一致
     legend: {
       show: true,
-      bottom: 0,
+      bottom: 8,
       left: 'center',
       itemWidth: 10,
       itemHeight: 10,
