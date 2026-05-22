@@ -2,6 +2,7 @@
 accounts.json
 accunt.txt
 config.json
+salt.bin
 
 # ── MSSQL 資料備份（含真實生產設備資料）────────────────────────────────────
 *.csv
