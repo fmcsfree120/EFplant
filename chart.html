@@ -473,7 +473,9 @@ const METRIC_METADATA = {
     warningVal: '0.85 kW/RT',
     yMin: 0.45,
     yMax: 1.25,
-    precision: 3
+    precision: 3,
+    controlVal: 0.70,
+    warningValNum: 0.85
   },
   '空壓效率': {
     title: '空壓運轉效率趨勢圖',
@@ -485,7 +487,9 @@ const METRIC_METADATA = {
     warningVal: '6.00 CMM/KWH',
     yMin: 4.0,
     yMax: 15.0,
-    precision: 2
+    precision: 2,
+    controlVal: 7.00,
+    warningValNum: 6.00
   }
 };
 
@@ -594,6 +598,53 @@ function renderChartData() {
   });
 
   const meta = METRIC_METADATA[currentMetric];
+
+  // 加入正常運轉控制線與預警限制線作輔助線 (以隱形序列實作，防止污染圖例)
+  seriesArray.push({
+    name: 'ReferenceLines',
+    type: 'line',
+    data: [],
+    markLine: {
+      symbol: ['none', 'none'],
+      silent: true,
+      data: [
+        {
+          yAxis: meta.controlVal,
+          lineStyle: { color: '#10b981', type: 'dashed', width: 1.5, opacity: 0.8 },
+          label: {
+            show: true,
+            position: 'insideEndTop',
+            formatter: `控制線 ${meta.normalVal}`,
+            color: '#10b981',
+            fontSize: 9,
+            fontFamily: 'Share Tech Mono, monospace',
+            backgroundColor: 'rgba(15, 23, 42, 0.85)',
+            borderColor: '#10b981',
+            borderWidth: 1,
+            padding: [2, 4],
+            borderRadius: 2
+          }
+        },
+        {
+          yAxis: meta.warningValNum,
+          lineStyle: { color: '#f59e0b', type: 'dashed', width: 1.5, opacity: 0.8 },
+          label: {
+            show: true,
+            position: 'insideEndBottom',
+            formatter: `預警線 ${meta.warningVal}`,
+            color: '#f59e0b',
+            fontSize: 9,
+            fontFamily: 'Share Tech Mono, monospace',
+            backgroundColor: 'rgba(15, 23, 42, 0.85)',
+            borderColor: '#f59e0b',
+            borderWidth: 1,
+            padding: [2, 4],
+            borderRadius: 2
+          }
+        }
+      ]
+    }
+  });
   var yMin = meta.yMin;
   var yMax = meta.yMax;
   var yUnit = ' ' + meta.unit;
