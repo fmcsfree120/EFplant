@@ -671,9 +671,44 @@ function renderChartData() {
       ]
     }
   });
-  var yMin = meta.yMin;
-  var yMax = meta.yMax;
+  // ── 動態 Y 軸計算：以正常控制線 ±250% 為基礎，自動擴展涵蓋所有數據點 ───────
+  var controlVal = meta.controlVal;
+
+  // 1. 計算 ±250% 的基礎範圍（最小不低於0，避免負值效率）
+  var baseYMin = Math.max(0, controlVal - controlVal * 2.5);
+  var baseYMax = controlVal + controlVal * 2.5;
+
+  // 2. 掃描目前所有廠區的全部實際數值，確保沒有任何點掉出圖表外
+  var dataMin = baseYMin;
+  var dataMax = baseYMax;
+  PLANTS.forEach(function(p) {
+    var vals = metricData[p] || [];
+    vals.forEach(function(v) {
+      if (v !== null && v !== undefined && !isNaN(v)) {
+        if (v < dataMin) dataMin = v;
+        if (v > dataMax) dataMax = v;
+      }
+    });
+  });
+
+  // 3. 若實際數值超出 ±250% 基礎範圍，則拉大 Y 軸（加 5% padding）
+  var range = dataMax - dataMin;
+  var padding = range * 0.05 || controlVal * 0.1; // 至少留一點空白
+  var yMin = Math.max(0, dataMin - padding);
+  var yMax = dataMax + padding;
+
+  // 確保控制線與預警線都在視圖範圍內
+  yMin = Math.min(yMin, Math.max(0, Math.min(meta.controlVal, meta.warningValNum) - padding));
+  yMax = Math.max(yMax, Math.max(meta.controlVal, meta.warningValNum) + padding);
+
+  // 四捨五入到合適的精度，讓 Y 軸刻度更整齊
+  var prec = Math.pow(10, meta.precision - 1);
+  yMin = Math.floor(yMin * prec) / prec;
+  yMax = Math.ceil(yMax * prec) / prec;
+  // ───────────────────────────────────────────────────────────────────────────
+
   var yUnit = ' ' + meta.unit;
+
 
   const option = {
     backgroundColor: 'transparent',
