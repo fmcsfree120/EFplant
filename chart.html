@@ -480,14 +480,21 @@ footer {
     <button class="refresh-btn" onclick="doRefreshNow()">立即重整</button>
   </div>
 
-  <footer>
+  <footer style="margin-top:20px;text-align:center;font-family:'Courier New',monospace;font-size:.65rem;color:#a2b9d2;">
     EFplant FMCS Smart Plant Integration &copy; 2026<br>
-    <button onclick="reloadKeepSess()" 
-            style="background:transparent;border:none;color:var(--dim);
-                   font-family:var(--mono);font-size:.65rem;cursor:pointer;
+  <button onclick="reloadKeepSess()" 
+            style="background:transparent;border:none;color:#a2b9d2;
+                   font-family:inherit;font-size:inherit;cursor:pointer;
                    letter-spacing:0.5px;margin-top:6px;font-weight:600;text-decoration:underline;">
       &#x1F504; 清除快取重新整理
-    </button>
+  </button>
+  &nbsp;&nbsp;
+  <button onclick="logOut()" 
+            style="background:transparent;border:none;color:#a2b9d2;
+                   font-family:inherit;font-size:inherit;cursor:pointer;
+                   letter-spacing:0.5px;margin-top:6px;font-weight:600;text-decoration:underline;">
+      &#x1F6AA; 登出系統
+  </button>
   </footer>
 </div>
 
@@ -1051,6 +1058,16 @@ function reloadKeepSess() {
     return;
   }
   location.reload();
+}
+
+function logOut() {
+  localStorage.removeItem(SK);
+  var base = location.protocol + '//' + location.host;
+  var path = location.pathname;
+  if (path.endsWith('chart.html')) {
+    path = path.replace('chart.html', '');
+  }
+  location.replace(base + path + '?_nc=' + Date.now());
 }
 
 var _reloading = false;
