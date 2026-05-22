@@ -52,5 +52,31 @@
     "WDUST#3",
     "WDUSTA003",
     "WDUSTA004"
+  ],
+  "S2": [
+    "CDA01",
+    "CDA02",
+    "CDA03",
+    "CDA04",
+    "CH01",
+    "CH02",
+    "CH03",
+    "CH04",
+    "CH05",
+    "MAU501",
+    "MAU502_1",
+    "MAU502_2",
+    "MAU503",
+    "MAU601",
+    "MAU701_2",
+    "PCWP201",
+    "PCWP202",
+    "PCWP203",
+    "PCWP204",
+    "PCWP205",
+    "PCWP206",
+    "PCWP401",
+    "PCWP402",
+    "PCWP403"
   ]
 }
