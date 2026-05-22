@@ -35,5 +35,41 @@ body{
   Under Construction<br>
   Trend chart coming soon
 </div>
+<footer style="margin-top:20px;text-align:center;font-family:'Courier New',monospace;font-size:.65rem;color:#a2b9d2;">
+  EFplant FMCS Smart Plant Integration &copy; 2026<br>
+  <button onclick="clearAndReload()" 
+          style="background:transparent;border:none;color:#a2b9d2;
+                 font-family:inherit;font-size:inherit;cursor:pointer;
+                 letter-spacing:0.5px;margin-top:6px;font-weight:600;text-decoration:underline;">
+    &#x1F504; 清除快取重新整理
+  </button>
+</footer>
+<script>
+function clearAndReload() {
+  localStorage.removeItem('ef_sess_v2');
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then(function(regs) {
+      var promises = [];
+      for (var i = 0; i < regs.length; i++) {
+        promises.push(regs[i].unregister());
+      }
+      return Promise.all(promises);
+    }).then(function() {
+      if ('caches' in window) {
+        return caches.keys().then(function(keys) {
+          return Promise.all(keys.map(function(k) { return caches.delete(k); }));
+        });
+      }
+    }).then(function() {
+      var base = location.protocol + '//' + location.host + location.pathname;
+      location.replace(base + '?_nc=' + Date.now());
+    }).catch(function() {
+      location.reload();
+    });
+    return;
+  }
+  location.reload();
+}
+</script>
 </body>
 </html>
