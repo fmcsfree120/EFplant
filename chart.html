@@ -473,7 +473,9 @@ function renderChartData() {
       name: p,
       type: 'line',
       data: dataVals,
-      showSymbol: false,
+      showSymbol: true,
+      symbolSize: 6,
+      connectNulls: true,
       smooth: 0.2, // 微微平滑
       lineStyle: {
         width: 2.2,
@@ -606,12 +608,16 @@ function renderChartData() {
       formatter: function (params) {
         if (!params || params.length === 0) return '';
         
+        // 篩選出有真實有效數據點的廠區
+        const validParams = params.filter(p => p.value !== undefined && p.value !== null && !isNaN(p.value) && p.value !== '');
+        if (validParams.length === 0) return '';
+        
         let html = `<div style="font-family: inherit; font-size: 13px; line-height: 1.6; color: #f1f5f9; min-width: 200px;">`;
-        const timeVal = params[0].axisValue;
+        const timeVal = validParams[0].axisValue;
         html += `<div style="font-weight: 700; border-bottom: 1px solid #334155; padding-bottom: 6px; margin-bottom: 8px; color: #60a5fa; font-family: var(--mono); letter-spacing: 0.5px;">📅 ${timeVal}</div>`;
         
         // 冰機效率越小越好 (由小到大排序)；空壓效率越大越好 (由大到小排序)
-        const sortedParams = [...params].sort((a, b) => {
+        const sortedParams = [...validParams].sort((a, b) => {
           if (currentMetric === '冰機效率') {
             return a.value - b.value;
           } else {
