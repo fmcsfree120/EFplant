@@ -2,7 +2,7 @@
 // 強制 HTML 與 health.json 永遠從網路抓取，不走 PWA 快取
 // 這是解決 iOS/Android PWA 快取舊頁面問題的根本方案
 
-const SW_VER = 'efplant-sw-v1';
+const SW_VER = 'efplant-sw-v2';
 
 self.addEventListener('install', function(e) {
     self.skipWaiting(); // 立即接管，不等舊 SW 結束
@@ -25,11 +25,12 @@ self.addEventListener('fetch', function(e) {
     var url = new URL(e.request.url);
     var path = url.pathname;
 
-    // HTML 主頁面 與 health.json：永遠從網路抓，不快取
+    // HTML 主頁面、chart.html、health.json：永遠從網路抓，不快取
     var isMainPage = (e.request.mode === 'navigate' ||
                       path.endsWith('/') ||
                       path.endsWith('/index.html') ||
-                      path.endsWith('index.html'));
+                      path.endsWith('index.html') ||
+                      path.endsWith('chart.html'));
     var isHealthJson = path.endsWith('health.json');
     var isDataEnc    = path.endsWith('data.enc');
 

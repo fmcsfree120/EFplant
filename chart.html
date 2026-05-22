@@ -763,7 +763,7 @@ function renderChartData() {
         fontSize: 10,
         fontFamily: 'Share Tech Mono, monospace',
         formatter: function(v) {
-          return `${v.toFixed(meta.precision - 1)}${yUnit}`;
+          return v.toFixed(meta.precision - 1);
         }
       },
       splitLine: {
