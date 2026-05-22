@@ -2,74 +2,688 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>EFplant - Trend Chart</title>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover">
+<title>EFplant - Quality Trend Charts</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- 引入 Apache ECharts 繪圖庫 -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.4.3/echarts.min.js"></script>
 <style>
-*{box-sizing:border-box;margin:0;padding:0;}
-body{
-  background:#080c10;color:#a2b9d2;
-  font-family:'Courier New',monospace;
-  min-height:100vh;display:flex;flex-direction:column;
-  align-items:center;justify-content:center;gap:14px;
+:root {
+  --bg: #0f172a;      /* 深藍黑色背景 */
+  --sf: #1e293b;      /* 中度藍灰面板 */
+  --sf2: #334155;     /* 亮藍灰邊框 hover 狀態 */
+  --bd: #334155;      /* 邊框線條 */
+  --bd2: #475569;     /* 亮邊框線條 */
+  --cyan: #00aaff;    /* 亮天藍色 */
+  --blue: #60a5fa;    /* 經典亮藍色 */
+  --amb: #f59e0b;     /* 亮黃琥珀色 */
+  --tx: #f1f5f9;      /* 近白色文字 */
+  --dim: #a2b9d2;     /* 亮灰藍色（易讀性高） */
+  --mono: 'Share Tech Mono', Consolas, Monaco, monospace;
 }
-.back{
-  position:fixed;top:12px;left:14px;padding:5px 12px;
-  border:1px solid #1a2d45;border-radius:2px;
-  color:#60a5fa;text-decoration:none;font-size:.75rem;letter-spacing:1px;
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
-.back:hover{background:#0c1420;}
-.icon{font-size:3rem;}
-.title{font-size:.85rem;letter-spacing:4px;color:#a2b9d2;text-transform:uppercase;}
-.box{
-  border:1px dashed #1a2d45;padding:14px 28px;text-align:center;
-  font-size:.68rem;color:#a2b9d2;line-height:2.2;letter-spacing:.5px;
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--tx);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+}
+
+/* HEADER */
+header {
+  display: flex;
+  align-items: center;
+  padding: 10px 14px;
+  gap: 10px;
+  border-bottom: 1px solid var(--bd);
+  background: var(--sf);
+  flex-shrink: 0;
+}
+
+.back-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 12px;
+  background: transparent;
+  border: 1px solid var(--bd2);
+  border-radius: 3px;
+  color: var(--blue);
+  text-decoration: none;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  transition: all 0.15s;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.back-btn:hover {
+  background: var(--sf2);
+  color: var(--tx);
+  border-color: var(--tx);
+}
+
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-shrink: 0;
+  margin-left: 6px;
+}
+
+.bname {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--blue);
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+
+.bsub {
+  font-size: 0.7rem;
+  color: var(--dim);
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.status-badge {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--amb);
+  border: 1px solid var(--amb);
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: rgba(245, 158, 11, 0.05);
+  letter-spacing: 0.5px;
+}
+
+/* MAIN CONTENT AREA */
+.main-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 14px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* QUALITY METRIC TABS */
+.tabs-container {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none; /* Firefox */
+  padding-bottom: 2px;
+  flex-shrink: 0;
+}
+
+.tabs-container::-webkit-scrollbar {
+  display: none; /* Safari and Chrome */
+}
+
+.tab-btn {
+  padding: 6px 14px;
+  background: var(--sf);
+  border: 1px solid var(--bd);
+  border-radius: 4px;
+  color: var(--dim);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+
+.tab-btn.active {
+  background: rgba(96, 165, 250, 0.15);
+  border-color: var(--blue);
+  color: var(--blue);
+}
+
+.tab-btn:hover:not(.active) {
+  border-color: var(--bd2);
+  color: var(--tx);
+}
+
+.tab-btn.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* CHART PANEL CARD */
+.chart-card {
+  background: var(--sf);
+  border: 1px solid var(--bd);
+  border-radius: 6px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: relative;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.chart-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+@media (min-width: 680px) {
+  .chart-header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+}
+
+.chart-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.chart-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--tx);
+  letter-spacing: 0.5px;
+}
+
+.chart-subtitle {
+  font-size: 0.72rem;
+  color: var(--dim);
+}
+
+/* ZOOM CONTROLS (MacroMicro Style) */
+.zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 3px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--bd);
+  align-self: flex-start;
+}
+
+.zoom-lbl {
+  font-size: 0.68rem;
+  color: var(--dim);
+  font-weight: 600;
+  margin-right: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.zoom-btn {
+  padding: 3px 8px;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  color: var(--dim);
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.zoom-btn.active {
+  background: var(--blue);
+  color: #0f172a;
+}
+
+.zoom-btn:hover:not(.active) {
+  color: var(--tx);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* CHART RENDER CONTAINER */
+.chart-viewport {
+  width: 100%;
+  height: 52vh;
+  min-height: 380px;
+  position: relative;
+}
+
+/* SCADA METRIC INFO GRID */
+.metric-info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-top: 4px;
+}
+
+@media (min-width: 600px) {
+  .metric-info-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.info-card {
+  background: rgba(0, 0, 0, 0.15);
+  border: 1px solid var(--bd);
+  padding: 8px 12px;
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.info-lbl {
+  font-size: 0.62rem;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  font-weight: 600;
+}
+
+.info-val {
+  font-family: var(--mono);
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.info-card.normal .info-val { color: #10b981; }
+.info-card.warning .info-val { color: var(--amb); }
+
+footer {
+  margin-top: auto;
+  padding: 10px 0;
+  text-align: center;
+  color: var(--dim);
+  font-size: 0.65rem;
+  font-family: var(--mono);
+  letter-spacing: 0.5px;
+  border-top: 1px solid var(--bd);
 }
 </style>
 </head>
 <body>
-<a href="index.html" class="back">&#x2190; BACK</a>
-<div class="icon">&#x1F4CA;</div>
-<div class="title">Trend Chart</div>
-<div class="box">
-  趨勢圖功能建置中<br>
-  Under Construction<br>
-  Trend chart coming soon
+
+<header>
+  <a href="index.html" class="back-btn">&#x2190; BACK</a>
+  <div class="brand">
+    <span class="bname">EFplant</span>
+    <span class="bsub">水質品質即時趨勢圖</span>
+  </div>
+  <div class="status-badge" id="time-badge">HISTORICAL / 168 HR</div>
+</header>
+
+<div class="main-container">
+  <!-- 品質數據切換 Tabs -->
+  <div class="tabs-container">
+    <button class="tab-btn active">純水導電度 / DI Water Conductivity</button>
+    <button class="tab-btn disabled" disabled>矽酸矽 / Silica (WIP)</button>
+    <button class="tab-btn disabled" disabled>總有機碳 / TOC (WIP)</button>
+    <button class="tab-btn disabled" disabled>溶解氧 / DO (WIP)</button>
+    <button class="tab-btn disabled" disabled>酸鹼值 / pH (WIP)</button>
+  </div>
+
+  <!-- 折線圖面板 -->
+  <div class="chart-card">
+    <div class="chart-header">
+      <div class="chart-title-group">
+        <div class="chart-title">純水導電度趨勢圖 (DI Water Conductivity)</div>
+        <div class="chart-subtitle">10個廠區同一時間軸聯動分析折線圖</div>
+      </div>
+      
+      <!-- MacroMicro 縮放快捷鍵 -->
+      <div class="zoom-controls">
+        <span class="zoom-lbl">Zoom:</span>
+        <button class="zoom-btn active" id="btn-7d" onclick="zoomRange('7d', this)">All (7d)</button>
+        <button class="zoom-btn" id="btn-3d" onclick="zoomRange('3d', this)">3d</button>
+        <button class="zoom-btn" id="btn-1d" onclick="zoomRange('1d', this)">1d</button>
+        <button class="zoom-btn" id="btn-12h" onclick="zoomRange('12h', this)">12h</button>
+        <button class="zoom-btn" id="btn-6h" onclick="zoomRange('6h', this)">6h</button>
+      </div>
+    </div>
+
+    <!-- ECharts 渲染視窗 -->
+    <div id="trend-chart" class="chart-viewport"></div>
+
+    <!-- 底部 SCADA 導電度標準與指標 -->
+    <div class="metric-info-grid">
+      <div class="info-card normal">
+        <div class="info-lbl">超純水理論極限</div>
+        <div class="info-val">0.055 μS/cm</div>
+      </div>
+      <div class="info-card normal">
+        <div class="info-lbl">正常品質控制閥</div>
+        <div class="info-val">&lt; 0.100 μS/cm</div>
+      </div>
+      <div class="info-card warning">
+        <div class="info-lbl">預警警報線 (HIGH)</div>
+        <div class="info-val">0.120 μS/cm</div>
+      </div>
+      <div class="info-card normal">
+        <div class="info-lbl">採樣頻率</div>
+        <div class="info-val">1 HR / 點</div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    EFplant FMCS Smart Plant Integration &copy; 2026<br>
+    水質即時趨勢圖模板規畫框架 (v2.1)
+  </footer>
 </div>
-<footer style="margin-top:20px;text-align:center;font-family:'Courier New',monospace;font-size:.65rem;color:#a2b9d2;">
-  EFplant FMCS Smart Plant Integration &copy; 2026<br>
-  <button onclick="clearAndReload()" 
-          style="background:transparent;border:none;color:#a2b9d2;
-                 font-family:inherit;font-size:inherit;cursor:pointer;
-                 letter-spacing:0.5px;margin-top:6px;font-weight:600;text-decoration:underline;">
-    &#x1F504; 清除快取重新整理
-  </button>
-</footer>
+
 <script>
-function clearAndReload() {
-  localStorage.removeItem('ef_sess_v2');
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.getRegistrations().then(function(regs) {
-      var promises = [];
-      for (var i = 0; i < regs.length; i++) {
-        promises.push(regs[i].unregister());
+// 1. 各廠區標準名稱（對照設備頁面的 nav 排列）
+const PLANTS = ["T2A", "S2A", "PCB", "S2", "S3", "HJ1", "HJ2", "LC2", "LC3"];
+
+// 2. 廠區專屬 HSL 調和科技色彩
+const PLANT_COLORS = {
+  "T2A": "#38bdf8", // 亮天藍
+  "S2A": "#10b981", // 翡翠綠
+  "PCB": "#a855f7", // 皇家紫
+  "S2": "#f59e0b",  // 琥珀橘
+  "S3": "#f43f5e",  // 玫瑰紅
+  "HJ1": "#06b6d4", // 青綠色
+  "HJ2": "#ec4899", // 粉紅色
+  "LC2": "#3b82f6", // 鮮藍色
+  "LC3": "#14b8a6"  // 藍綠色
+};
+
+// 3. 物理合理的 168 小時歷史純水導電度模擬數據生成
+function generateMockData() {
+  const timestamps = [];
+  const seriesData = {};
+  
+  // 初始化各廠區的基礎線條特徵
+  const baselines = {
+    "T2A": { base: 0.056, noise: 0.001, waveAmp: 0.001, wavePeriod: 24, drift: 0.0001, spikeProb: 0.01 },
+    "S2A": { base: 0.066, noise: 0.002, waveAmp: 0.003, wavePeriod: 12, drift: 0.0002, spikeProb: 0.01 },
+    "PCB": { base: 0.074, noise: 0.003, waveAmp: 0.004, wavePeriod: 24, drift: 0.0003, spikeProb: 0.02 },
+    "S2":  { base: 0.055, noise: 0.001, waveAmp: 0.001, wavePeriod: 24, drift: 0.0001, spikeProb: 0.01 },
+    "S3":  { base: 0.061, noise: 0.002, waveAmp: 0.002, wavePeriod: 12, drift: 0.00015, spikeProb: 0.01 },
+    "HJ1": { base: 0.068, noise: 0.002, waveAmp: 0.003, wavePeriod: 24, drift: 0.0002, spikeProb: 0.02 },
+    "HJ2": { base: 0.063, noise: 0.002, waveAmp: 0.002, wavePeriod: 24, drift: 0.0001, spikeProb: 0.01 },
+    "LC2": { base: 0.086, noise: 0.003, waveAmp: 0.005, wavePeriod: 8,  drift: 0.0004, spikeProb: 0.03 },
+    "LC3": { base: 0.078, noise: 0.003, waveAmp: 0.004, wavePeriod: 12, drift: 0.0003, spikeProb: 0.02 }
+  };
+
+  PLANTS.forEach(p => { seriesData[p] = []; });
+
+  const now = new Date();
+  
+  // 生成 168 小時前到現在的整點時間戳
+  for (let i = 167; i >= 0; i--) {
+    const t = new Date(now.getTime() - i * 60 * 60 * 1000);
+    t.setMinutes(0, 0, 0);
+    
+    // 格式化時間：YYYY-MM-DD HH:00
+    const year = t.getFullYear();
+    const month = String(t.getMonth() + 1).padStart(2, '0');
+    const date = String(t.getDate()).padStart(2, '0');
+    const hours = String(t.getHours()).padStart(2, '0');
+    const timeStr = `${year}-${month}-${date} ${hours}:00`;
+    timestamps.push(timeStr);
+
+    // 計算各廠區該小時的導電度數值
+    PLANTS.forEach(p => {
+      const cfg = baselines[p];
+      
+      // 1) 基礎正弦波動（模擬設備負載週期或日夜溫差）
+      const rad = (2 * Math.PI * i) / cfg.wavePeriod;
+      const wave = Math.sin(rad) * cfg.waveAmp;
+      
+      // 2) 隨機雜訊
+      const randNoise = (Math.random() - 0.5) * cfg.noise;
+      
+      // 3) 緩慢低頻隨機漂移 (Random Walk)
+      const drift = Math.sin((2 * Math.PI * i) / 168) * cfg.drift * i;
+
+      // 4) 模擬罕見的超純水設備再生或微幅異常突波 (Spike)
+      let spike = 0;
+      // 透過 deterministic 偽隨機 (以廠區名稱與時間做 hash) 確保每次刷新數值恆定且合理
+      const hash = Math.abs(Math.sin(p.charCodeAt(0) + i)) * 1000 % 1;
+      if (hash < cfg.spikeProb) {
+        // 再生突波通常持續 1~2 小時，最高升至 0.11 ~ 0.13
+        spike = 0.02 + hash * 0.03;
       }
-      return Promise.all(promises);
-    }).then(function() {
-      if ('caches' in window) {
-        return caches.keys().then(function(keys) {
-          return Promise.all(keys.map(function(k) { return caches.delete(k); }));
-        });
-      }
-    }).then(function() {
-      var base = location.protocol + '//' + location.host + location.pathname;
-      location.replace(base + '?_nc=' + Date.now());
-    }).catch(function() {
-      location.reload();
+
+      // 理論最低界線限制在 0.055 超純水物理極限之上
+      let val = cfg.base + wave + randNoise + drift + spike;
+      if (val < 0.055) val = 0.055;
+      
+      seriesData[p].push(Number(val.toFixed(4)));
     });
-    return;
   }
-  location.reload();
+
+  return { timestamps, seriesData };
 }
+
+// 4. 初始化 ECharts 圖表
+let myChart = null;
+const mock = generateMockData();
+
+function initChart() {
+  const chartDom = document.getElementById('trend-chart');
+  myChart = echarts.init(chartDom);
+  
+  // 建立 9 個廠區折線序列
+  const seriesArray = PLANTS.map(p => {
+    return {
+      name: p,
+      type: 'line',
+      data: mock.seriesData[p],
+      showSymbol: false,
+      smooth: 0.2, // 微微平滑，呈現極精緻的 MacroMicro 曲線效果
+      lineStyle: {
+        width: 2.2,
+        shadowBlur: 8,
+        shadowColor: `${PLANT_COLORS[p]}4D` // 30% 透明度霓虹霓虹外陰影
+      },
+      itemStyle: {
+        color: PLANT_COLORS[p]
+      },
+      emphasis: {
+        focus: 'series', // 滑鼠移到該線時，其餘線條淡出，聚焦看此廠區
+        lineStyle: {
+          width: 3.5,
+          shadowBlur: 12
+        }
+      }
+    };
+  });
+
+  const option = {
+    backgroundColor: 'transparent',
+    grid: {
+      top: 35,
+      bottom: 60,
+      left: 55,
+      right: 25,
+      containLabel: false
+    },
+    // X 軸設定
+    xAxis: {
+      type: 'category',
+      data: mock.timestamps,
+      boundaryGap: false,
+      axisLine: {
+        lineStyle: { color: '#334155', width: 1.5 }
+      },
+      axisLabel: {
+        color: '#a2b9d2',
+        fontSize: 10,
+        fontFamily: 'Share Tech Mono, monospace',
+        formatter: function(value) {
+          // 只顯示日期與時間，簡化刻度
+          const parts = value.split(' ');
+          const datePart = parts[0].substring(5); // 取得 MM-DD
+          const timePart = parts[1]; // 取得 HH:00
+          return `${datePart}\n${timePart}`;
+        }
+      },
+      splitLine: {
+        show: true,
+        lineStyle: { color: 'rgba(51, 65, 85, 0.25)' }
+      },
+      axisPointer: {
+        show: true,
+        type: 'line',
+        lineStyle: {
+          color: '#60a5fa',
+          width: 1.2,
+          type: 'dashed'
+        }
+      }
+    },
+    // Y 軸設定
+    yAxis: {
+      type: 'value',
+      min: 0.05,
+      max: 0.13,
+      axisLine: {
+        show: false
+      },
+      axisLabel: {
+        color: '#a2b9d2',
+        fontSize: 10,
+        fontFamily: 'Share Tech Mono, monospace',
+        formatter: function(v) {
+          return `${v.toFixed(3)} μS`;
+        }
+      },
+      splitLine: {
+        show: true,
+        lineStyle: { color: 'rgba(51, 65, 85, 0.35)' }
+      }
+    },
+    // ECharts 內建 DataZoom 工具 (底部的縮放控制滑軌，預設隱藏以配合頂部快捷按鈕)
+    dataZoom: [
+      {
+        type: 'inside', // 支援滑鼠滾輪與手機雙指觸控手勢縮放
+        start: 0,
+        end: 100
+      },
+      {
+        type: 'slider', // 底部隱密滑動條，不干擾視覺
+        show: false,
+        start: 0,
+        end: 100
+      }
+    ],
+    // 聯動懸浮 Tooltip 配置 (完全比照 MacroMicro 風格客製)
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: '#1e293b',
+      borderColor: '#334155',
+      borderWidth: 1,
+      padding: [10, 14],
+      textStyle: {
+        color: '#f1f5f9'
+      },
+      // 自訂渲染 Formatter 函數
+      formatter: function (params) {
+        if (!params || params.length === 0) return '';
+        
+        let html = `<div style="font-family: inherit; font-size: 13px; line-height: 1.6; color: #f1f5f9; min-width: 190px;">`;
+        const timeVal = params[0].axisValue;
+        html += `<div style="font-weight: 700; border-bottom: 1px solid #334155; padding-bottom: 6px; margin-bottom: 8px; color: #60a5fa; font-family: var(--mono); letter-spacing: 0.5px;">📅 ${timeVal}</div>`;
+        
+        // 品質數據由小到大排序 (導電度越低代表水質越純、品質越好)
+        const sortedParams = [...params].sort((a, b) => a.value - b.value);
+        
+        sortedParams.forEach(p => {
+          html += `
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
+            <span style="display: flex; align-items: center; gap: 6px; color: #a2b9d2;">
+              <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: ${p.color}; box-shadow: 0 0 6px ${p.color};"></span>
+              <span style="font-weight: 600;">${p.seriesName}</span>
+            </span>
+            <span style="font-family: var(--mono); font-weight: 700; color: #ffffff; padding-left: 14px;">${Number(p.value).toFixed(4)} <span style="font-size: 10px; color: #64748b; font-weight: normal;">μS/cm</span></span>
+          </div>`;
+        });
+        html += `</div>`;
+        return html;
+      }
+    },
+    // 底部圖例 (Legend) - 與 MacroMicro 風格一致
+    legend: {
+      show: true,
+      bottom: 0,
+      left: 'center',
+      itemWidth: 10,
+      itemHeight: 10,
+      itemGap: 12,
+      textStyle: {
+        color: '#a2b9d2',
+        fontSize: 11,
+        fontWeight: 600
+      },
+      icon: 'circle', // 圓形圖例
+      data: PLANTS
+    },
+    series: seriesArray
+  };
+
+  myChart.setOption(option);
+}
+
+// 5. 實作快捷範圍縮放函數
+function zoomRange(range, btn) {
+  // 切換按鈕 active 樣式
+  document.querySelectorAll('.zoom-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+
+  const totalPoints = mock.timestamps.length; // 168
+  const endIdx = totalPoints - 1; // 167
+  let startIdx = 0;
+
+  if (range === '7d') {
+    startIdx = 0;
+  } else if (range === '3d') {
+    startIdx = Math.max(0, endIdx - 72);
+  } else if (range === '1d') {
+    startIdx = Math.max(0, endIdx - 24);
+  } else if (range === '12h') {
+    startIdx = Math.max(0, endIdx - 12);
+  } else if (range === '6h') {
+    startIdx = Math.max(0, endIdx - 6);
+  }
+
+  // 使用 ECharts API 動態調整縮放區間
+  myChart.dispatchAction({
+    type: 'dataZoom',
+    startValue: startIdx,
+    endValue: endIdx
+  });
+}
+
+// 6. 響應式圖表大小調整
+window.addEventListener('resize', function() {
+  if (myChart) {
+    myChart.resize();
+  }
+});
+
+// 7. 網頁加載完畢自動初始化
+window.addEventListener('DOMContentLoaded', function() {
+  initChart();
+});
 </script>
+
 </body>
 </html>
