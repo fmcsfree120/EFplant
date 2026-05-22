@@ -410,7 +410,7 @@ footer {
     <div class="chart-header">
       <div class="chart-title-group">
         <div class="chart-title">冰機運轉效率趨勢圖</div>
-        <div class="chart-subtitle">各廠區冰機綜合效率 (kW/RT，越低代表能效表現越佳)</div>
+        <div class="chart-subtitle">各廠區冰機綜合效率<br>(kW/RT，越低代表能效表現越佳)</div>
       </div>
       
       <!-- MacroMicro 縮放快捷鍵 -->
@@ -461,6 +461,60 @@ const PLANT_COLORS = {
   "LC2": "#3b82f6", // 鮮藍色
   "LC3": "#14b8a6"  // 藍綠色
 };
+
+const METRIC_METADATA = {
+  '冰機效率': {
+    title: '冰機運轉效率趨勢圖',
+    subtitle: '各廠區冰機綜合效率(kW/RT，越低代表能效表現越佳)',
+    unit: 'kW/RT',
+    normalLine: '正常運轉控制線',
+    normalVal: '< 0.70 kW/RT',
+    warningLine: '預警警報限制線 (HIGH)',
+    warningVal: '0.85 kW/RT',
+    yMin: 0.45,
+    yMax: 1.25,
+    precision: 3
+  },
+  '空壓效率': {
+    title: '空壓運轉效率趨勢圖',
+    subtitle: '各廠區空壓系統綜合效率(CMM/KWH，越高代表能效表現越佳)',
+    unit: 'CMM/KWH',
+    normalLine: '正常運轉控制線',
+    normalVal: '> 7.00 CMM/KWH',
+    warningLine: '預警警報限制線 (LOW)',
+    warningVal: '6.00 CMM/KWH',
+    yMin: 4.0,
+    yMax: 15.0,
+    precision: 2
+  }
+};
+
+function formatSubtitle(text) {
+  if (text && text.includes('(')) {
+    return text.replace('(', '<br>(');
+  }
+  return text;
+}
+
+function updateMetricUI() {
+  const meta = METRIC_METADATA[currentMetric];
+  if (!meta) return;
+
+  const titleEl = document.querySelector('.chart-title');
+  const subEl = document.querySelector('.chart-subtitle');
+  if (titleEl) titleEl.textContent = meta.title;
+  if (subEl) subEl.innerHTML = formatSubtitle(meta.subtitle);
+
+  const lblNormal = document.getElementById('card-lbl-normal');
+  const valNormal = document.getElementById('card-val-normal');
+  const lblWarning = document.getElementById('card-lbl-warning');
+  const valWarning = document.getElementById('card-val-warning');
+
+  if (lblNormal) lblNormal.textContent = meta.normalLine;
+  if (valNormal) valNormal.textContent = meta.normalVal;
+  if (lblWarning) lblWarning.textContent = meta.warningLine;
+  if (valWarning) valWarning.textContent = meta.warningVal;
+}
 
 var SK = 'ef_sess_v2';
 var myChart = null;
@@ -539,9 +593,10 @@ function renderChartData() {
     };
   });
 
-  var yMin = currentMetric === '冰機效率' ? 0.45 : 4.0;
-  var yMax = currentMetric === '冰機效率' ? 1.25 : 15.0;
-  var yUnit = currentMetric === '冰機效率' ? ' kW/RT' : ' CMM/KWH';
+  const meta = METRIC_METADATA[currentMetric];
+  var yMin = meta.yMin;
+  var yMax = meta.yMax;
+  var yUnit = ' ' + meta.unit;
 
   const option = {
     backgroundColor: 'transparent',
@@ -596,7 +651,7 @@ function renderChartData() {
         fontSize: 10,
         fontFamily: 'Share Tech Mono, monospace',
         formatter: function(v) {
-          return `${v.toFixed(currentMetric === '冰機效率' ? 2 : 1)}${yUnit}`;
+          return `${v.toFixed(meta.precision - 1)}${yUnit}`;
         }
       },
       splitLine: {
@@ -617,10 +672,11 @@ function renderChartData() {
       backgroundColor: '#1e293b',
       borderColor: '#334155',
       borderWidth: 1,
-      padding: [10, 14],
+      padding: [4, 6],
       textStyle: {
         color: '#f1f5f9'
       },
+      extraCssText: 'white-space: nowrap; font-size: 11px; padding: 4px 6px; line-height: 1.3; box-shadow: 0 4px 12px rgba(0,0,0,0.5); border-radius: 4px;',
       position: function (point, params, dom, rect, size) {
         var x = point[0];
         var y = point[1];
@@ -660,9 +716,9 @@ function renderChartData() {
         });
         if (validParams.length === 0) return '';
         
-        let html = `<div style="font-family: inherit; font-size: 13px; line-height: 1.6; color: #f1f5f9; min-width: 200px;">`;
+        let html = `<div style="font-family: inherit; font-size: 11px; line-height: 1.3; color: #f1f5f9; white-space: nowrap;">`;
         const timeVal = validParams[0].axisValue;
-        html += `<div style="font-weight: 700; border-bottom: 1px solid #334155; padding-bottom: 6px; margin-bottom: 8px; color: #60a5fa; font-family: var(--mono); letter-spacing: 0.5px;">📅 ${timeVal}</div>`;
+        html += `<div style="font-weight: 700; border-bottom: 1px solid #334155; padding-bottom: 3px; margin-bottom: 4px; color: #60a5fa; font-family: var(--mono); letter-spacing: 0.5px;">📅 ${timeVal}</div>`;
         
         // 冰機效率越小越好 (由小到大排序)；空壓效率越大越好 (由大到小排序)
         const sortedParams = [...validParams].sort((a, b) => {
@@ -674,14 +730,14 @@ function renderChartData() {
         });
         
         sortedParams.forEach(p => {
-          var formattedVal = Number(p.value).toFixed(currentMetric === '冰機效率' ? 3 : 2);
+          var formattedVal = Number(p.value).toFixed(meta.precision);
           html += `
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
-            <span style="display: flex; align-items: center; gap: 6px; color: #a2b9d2;">
-              <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: ${p.color}; box-shadow: 0 0 6px ${p.color};"></span>
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 2px;">
+            <span style="display: flex; align-items: center; gap: 4px; color: #a2b9d2;">
+              <span style="display: inline-block; width: 5px; height: 5px; border-radius: 50%; background-color: ${p.color}; box-shadow: 0 0 3px ${p.color};"></span>
               <span style="font-weight: 600;">${p.seriesName}</span>
             </span>
-            <span style="font-family: var(--mono); font-weight: 700; color: #ffffff; padding-left: 14px;">${formattedVal} <span style="font-size: 10px; color: #64748b; font-weight: normal;">${currentMetric === '冰機效率' ? 'kW/RT' : 'CMM/KWH'}</span></span>
+            <span style="font-family: var(--mono); font-weight: 700; color: #ffffff;">${formattedVal} <span style="font-size: 8px; color: #64748b; font-weight: normal;">${meta.unit}</span></span>
           </div>`;
         });
         html += `</div>`;
@@ -716,28 +772,8 @@ function switchMetric(metric, btn) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
 
-  // 更新標題與副標題
-  const titleEl = document.querySelector('.chart-title');
-  const subEl = document.querySelector('.chart-subtitle');
-  if (metric === '冰機效率') {
-    if (titleEl) titleEl.textContent = '冰機運轉效率趨勢圖';
-    if (subEl) subEl.textContent = '各廠區冰機綜合效率 (kW/RT，越低代表能效表現越佳)';
-    
-    // 更新底部 SCADA 卡片
-    document.getElementById('card-lbl-normal').textContent = '正常運轉控制線';
-    document.getElementById('card-val-normal').textContent = '< 0.70 kW/RT';
-    document.getElementById('card-lbl-warning').textContent = '預警警報限制線 (HIGH)';
-    document.getElementById('card-val-warning').textContent = '0.85 kW/RT';
-  } else {
-    if (titleEl) titleEl.textContent = '空壓運轉效率趨勢圖';
-    if (subEl) subEl.textContent = '各廠區空壓系統綜合效率 (CMM/KWH，越高代表能效表現越佳)';
-    
-    // 更新底部 SCADA 卡片
-    document.getElementById('card-lbl-normal').textContent = '正常運轉控制線';
-    document.getElementById('card-val-normal').textContent = '> 7.00 CMM/KWH';
-    document.getElementById('card-lbl-warning').textContent = '預警警報限制線 (LOW)';
-    document.getElementById('card-val-warning').textContent = '6.00 CMM/KWH';
-  }
+  // 更新標題、副標題與卡片數據
+  updateMetricUI();
 
   // 重新渲染圖表
   renderChartData();
@@ -852,11 +888,8 @@ window.addEventListener('DOMContentLoaded', function() {
       initStatusPulse(data.updated);
     }
     
-    // 初始化卡片數據
-    document.getElementById('card-lbl-normal').textContent = '正常運轉控制線';
-    document.getElementById('card-val-normal').textContent = '< 0.70 kW/RT';
-    document.getElementById('card-lbl-warning').textContent = '預警警報限制線 (HIGH)';
-    document.getElementById('card-val-warning').textContent = '0.85 kW/RT';
+    // 依據自動建置原則初始化 UI 排版
+    updateMetricUI();
 
     // 初始化圖表
     initChart();
