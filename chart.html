@@ -383,6 +383,40 @@ footer {
   letter-spacing: 0.5px;
   border-top: 1px solid var(--bd);
 }
+
+/* REFRESH BANNER (Auto-update notification) */
+.refresh-banner {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px dashed var(--blue);
+  border-radius: 4px;
+  font-size: 0.78rem;
+  color: var(--blue);
+  white-space: nowrap;
+  font-weight: 600;
+  margin-top: 10px;
+  flex-shrink: 0;
+}
+.refresh-btn {
+  padding: 4px 12px;
+  background: var(--blue);
+  border: none;
+  border-radius: 3px;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  letter-spacing: 0.5px;
+  transition: opacity 0.15s;
+}
+.refresh-btn:hover {
+  opacity: 0.85;
+}
 </style>
 </head>
 <body>
@@ -438,6 +472,12 @@ footer {
         <div class="info-val" id="card-val-warning">--</div>
       </div>
     </div>
+  </div>
+
+  <!-- Live update detection banner placed below the chart -->
+  <div class="refresh-banner" id="refresh-banner">
+    &#x1F504; 新資料已就緒，<span id="refresh-count">5</span> 秒後自動重新整理 &nbsp;
+    <button class="refresh-btn" onclick="doRefreshNow()">立即重整</button>
   </div>
 
   <footer>
@@ -623,7 +663,11 @@ function renderChartData() {
             formatter: `控制線 ${meta.normalVal}`,
             color: '#10b981',
             fontSize: 9,
-            fontFamily: 'Share Tech Mono, monospace'
+            fontFamily: 'Share Tech Mono, monospace',
+            backgroundColor: 'transparent',
+            borderColor: 'transparent',
+            borderWidth: 0,
+            padding: 0
           }
         },
         {
@@ -635,7 +679,11 @@ function renderChartData() {
             formatter: `預警線 ${meta.warningVal}`,
             color: '#f59e0b',
             fontSize: 9,
-            fontFamily: 'Share Tech Mono, monospace'
+            fontFamily: 'Share Tech Mono, monospace',
+            backgroundColor: 'transparent',
+            borderColor: 'transparent',
+            borderWidth: 0,
+            padding: 0
           }
         }
       ]
@@ -940,6 +988,15 @@ window.addEventListener('DOMContentLoaded', function() {
 
     // 初始化圖表
     initChart();
+
+    // 啟動動態新資料輪詢檢測
+    setTimeout(checkHealth, 15000);
+    setInterval(checkHealth, 60000);
+
+    // 手機切換回頁面時立即偵測更新
+    document.addEventListener('visibilitychange', function() {
+      if (document.visibilityState === 'visible') checkHealth();
+    });
   }).catch(function(err) {
     console.error("資料載入失敗", err);
     localStorage.removeItem(SK);
@@ -970,6 +1027,40 @@ function reloadKeepSess() {
     return;
   }
   location.reload();
+}
+
+var _reloading = false;
+
+function doRefreshNow() {
+  reloadKeepSess();
+}
+
+function startCountdown() {
+  var banner = document.getElementById('refresh-banner');
+  var countEl = document.getElementById('refresh-count');
+  if (banner) banner.style.display = 'flex';
+  var sec = 5;
+  var t = setInterval(function() {
+    sec--;
+    if (countEl) countEl.textContent = sec;
+    if (sec <= 0) {
+      clearInterval(t);
+      doRefreshNow();
+    }
+  }, 1000);
+}
+
+async function checkHealth() {
+  if (_reloading || !GEN_TIME) return;
+  try {
+    const r = await fetch('health.json?_=' + Date.now(), {cache: 'no-store'});
+    if (!r.ok) return;
+    const d = await r.json();
+    if (new Date(d.updated) > GEN_TIME) {
+      _reloading = true;
+      startCountdown();
+    }
+  } catch(e) {}
 }
 </script>
 
