@@ -680,27 +680,28 @@ function renderChartData() {
       ]
     }
   });
-  // ── 動態 Y 軸計算：以正常控制線 ±250% 為基礎，自動擴展涵蓋所有數據點 ───────
+  // ── 動態 Y 軸計算 ───────
   var controlVal = meta.controlVal;
+  var dataMin = Infinity;
+  var dataMax = -Infinity;
+  var hasData = false;
 
-  // 1. 計算 ±250% 的基礎範圍（最小不低於0，避免負值效率）
-  var baseYMin = Math.max(0, controlVal - controlVal * 2.5);
-  var baseYMax = controlVal + controlVal * 2.5;
-
-  // 2. 掃描目前所有廠區的全部實際數值，確保沒有任何點掉出圖表外
-  var dataMin = baseYMin;
-  var dataMax = baseYMax;
   PLANTS.forEach(function(p) {
     var vals = metricData[p] || [];
     vals.forEach(function(v) {
       if (v !== null && v !== undefined && !isNaN(v)) {
+        hasData = true;
         if (v < dataMin) dataMin = v;
         if (v > dataMax) dataMax = v;
       }
     });
   });
 
-  // 3. 若實際數值超出 ±250% 基礎範圍，則拉大 Y 軸（加 5% padding）
+  if (!hasData) {
+    dataMin = controlVal;
+    dataMax = controlVal;
+  }
+
   var range = dataMax - dataMin;
   var padding = range * 0.05 || controlVal * 0.1; // 至少留一點空白
   var yMin = Math.max(0, dataMin - padding);
