@@ -4,40 +4,64 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>EFplant - Secure Access</title>
-<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
 <style>
-:root{--bg:#0a0f17;--sf:#0d1520;--cyan:#00aaff;--red:#ff3d00;--bd:#1e3045;}
+:root{
+  --bg:#0f172a;
+  --sf:#1e293b;
+  --cyan:#60a5fa; /* Brighter sky blue for logo/title */
+  --red:#ef4444;
+  --bd:#334155;
+  --tx:#f1f5f9;
+  --dim:#a2b9d2; /* Brighter slate blue for dark blue/gray text */
+}
 *{box-sizing:border-box;margin:0;padding:0;}
-body{margin:0;background:var(--bg);color:var(--cyan);
-  font-family:'Share Tech Mono','Courier New',monospace;
-  height:100vh;display:flex;align-items:center;justify-content:center;}
+body{
+  margin:0;background:var(--bg);color:var(--tx);
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  height:100vh;display:flex;align-items:center;justify-content:center;
+}
 #lock-screen{width:100%;display:flex;justify-content:center;padding:16px;}
-.panel{border:1px solid var(--bd);border-top:3px solid var(--cyan);
-  padding:32px 26px;display:flex;flex-direction:column;
-  align-items:center;gap:14px;background:var(--sf);
-  border-radius:3px;width:100%;max-width:360px;}
-.logo{font-size:1.7em;font-weight:700;letter-spacing:5px;
-  color:var(--cyan);white-space:nowrap;text-align:center;}
-.sub{color:#3a5570;font-size:.72em;letter-spacing:3px;
-  margin-top:-8px;text-transform:uppercase;white-space:nowrap;}
-hr{width:100%;border:none;border-top:1px solid #1a2535;}
-.lbl{color:#3a5570;font-size:.72em;letter-spacing:2px;
-  align-self:flex-start;white-space:nowrap;}
-#pwd{width:100%;background:rgba(0,0,0,.6);
-  border:1px solid #222;border-bottom:2px solid var(--cyan);
-  color:var(--cyan);font-family:inherit;font-size:1.1em;
-  padding:11px 14px;outline:none;letter-spacing:4px;}
-#pwd:focus{box-shadow:0 0 10px rgba(0,170,255,.25);}
+.panel{
+  border:1px solid var(--bd);border-top:3px solid var(--cyan);
+  padding:36px 28px;display:flex;flex-direction:column;
+  align-items:center;gap:16px;background:var(--sf);
+  border-radius:6px;width:100%;max-width:360px;
+  box-shadow:0 10px 15px -3px rgba(0,0,0,0.3);
+}
+.logo{
+  font-size:1.8em;font-weight:700;letter-spacing:3px;
+  color:var(--cyan);white-space:nowrap;text-align:center;
+}
+.sub{
+  color:var(--dim);font-size:.72em;letter-spacing:1.5px;
+  margin-top:-10px;text-transform:uppercase;white-space:nowrap;
+}
+hr{width:100%;border:none;border-top:1px solid var(--bd);}
+.lbl{
+  color:var(--dim);font-size:.72em;letter-spacing:1px;
+  align-self:flex-start;white-space:nowrap;font-weight:600;
+}
+#pwd{
+  width:100%;background:#0f172a;
+  border:1px solid var(--bd);border-bottom:2px solid var(--cyan);
+  color:#fff;font-family:inherit;font-size:1.1em;
+  padding:11px 14px;outline:none;letter-spacing:4px;
+  border-radius:4px 4px 0 0;
+  transition:border-color 0.25s;
+}
+#pwd:focus{border-color:var(--cyan);box-shadow:0 0 0 2px rgba(59,130,246,0.15);}
 #pwd.err{border-bottom-color:var(--red);}
-#btn{width:100%;padding:11px;background:var(--cyan);border:none;
-  color:#0a0f17;font-family:inherit;font-size:.88em;
-  font-weight:700;letter-spacing:2px;cursor:pointer;
-  border-radius:2px;white-space:nowrap;transition:opacity .2s;}
+#btn{
+  width:100%;padding:12px;background:var(--cyan);border:none;
+  color:#fff;font-family:inherit;font-size:.95em;
+  font-weight:700;letter-spacing:1px;cursor:pointer;
+  border-radius:4px;white-space:nowrap;transition:opacity .2s;
+}
 #btn:hover{opacity:.85;}
 #btn:disabled{opacity:.5;cursor:not-allowed;}
 #err{color:var(--red);display:none;font-size:.78em;
-  letter-spacing:1px;white-space:nowrap;}
+  letter-spacing:1px;white-space:nowrap;font-weight:600;}
 #loading{display:none;color:var(--cyan);font-size:.75em;
   letter-spacing:1px;white-space:nowrap;}
 </style>
@@ -52,13 +76,13 @@ hr{width:100%;border:none;border-top:1px solid #1a2535;}
     <input type="password" id="pwd"
            placeholder="&#x25CF;&#x25CF;&#x25CF;&#x25CF;&#x25CF;&#x25CF;&#x25CF;&#x25CF;"
            autocomplete="new-password" onkeydown="if(event.key==='Enter')go()">
-    <button id="btn" onclick="go()">[ AUTHENTICATE ]</button>
+    <button id="btn" onclick="go()">登入系統 / LOG IN</button>
     <div id="err">&#9888; ACCESS DENIED</div>
     <div id="loading">DECRYPTING... &#x23F3;</div>
-    <hr style="width:100%;border:none;border-top:1px solid #1a2535;margin-top:4px;">
+    <hr style="width:100%;border:none;border-top:1px solid var(--bd);margin-top:4px;">
     <button onclick="clearAndReload()"
-            style="background:transparent;border:none;color:#3a5570;
-                   font-family:inherit;font-size:.65em;cursor:pointer;letter-spacing:1px;">
+            style="background:transparent;border:none;color:var(--dim);
+                   font-family:inherit;font-size:.68em;cursor:pointer;letter-spacing:1px;font-weight:600;">
       &#x1F504; 清除快取重新整理
     </button>
   </div>
@@ -119,6 +143,7 @@ function checkForUpdate() {
   }).catch(function(){});
 }
 
+// 開始輪詢更新
 function startPolling() {
   if (_efpPollStarted) return;
   _efpPollStarted = true;
@@ -184,8 +209,6 @@ function go() {
 }
 
 // 頁面載入：嘗試自動登入
-// Session 的有效性由「dk 能否解密當前 data.enc」決定
-// 不需要 gt 欄位、不需要版本比對 — 解密失敗自然就是失效
 window.addEventListener('DOMContentLoaded', function(){
   document.getElementById('pwd').value = '';
   var dkh = loadSess();
@@ -197,8 +220,30 @@ window.addEventListener('DOMContentLoaded', function(){
   }).catch(function(){});
 });
 
+// 強制登出並徹底清除 Service Worker / Browser Caches
 function clearAndReload() {
   localStorage.removeItem(SK);
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then(function(regs) {
+      var promises = [];
+      for (var i = 0; i < regs.length; i++) {
+        promises.push(regs[i].unregister());
+      }
+      return Promise.all(promises);
+    }).then(function() {
+      if ('caches' in window) {
+        return caches.keys().then(function(keys) {
+          return Promise.all(keys.map(function(k) { return caches.delete(k); }));
+        });
+      }
+    }).then(function() {
+      var base = location.protocol + '//' + location.host + location.pathname;
+      location.replace(base + '?_nc=' + Date.now());
+    }).catch(function() {
+      location.reload();
+    });
+    return;
+  }
   location.reload();
 }
 
