@@ -88,10 +88,6 @@ hr{width:100%;border:none;border-top:1px solid var(--bd);}
   </div>
 </div>
 <script>
-// EFplant 資料/外殼分離架構
-// data.enc 包含加密 payload + KEY_SAFES + salt + 時間戳（每小時更新）
-// index.html 是靜態的，可被瀏覽器/PWA 自由快取，不會造成資料舊版問題
-
 var SK = 'ef_sess_v2';
 var SEXP = 30 * 60 * 1000;
 var _efpDk = null;
@@ -110,8 +106,6 @@ function loadSess() {
   return null;
 }
 
-// 用使用者衍生金鑰解密 data.enc 取得儀表板 HTML
-// 若 dk 無法在當前 KEY_SAFES 中找到對應 safe（例如 data.enc 已換新 salt），回傳 null
 function decryptData(data, dkh) {
   var iid = dkh.substring(0, 32);
   var ekh = dkh.substring(32);
@@ -128,13 +122,11 @@ function decryptData(data, dkh) {
     .toString(CryptoJS.enc.Utf8) || null;
 }
 
-// 抓取最新 data.enc（每次都帶時間戳避免任何快取層）
 function fetchData() {
   return fetch('data.enc?_=' + Date.now(), {cache:'no-store'})
     .then(function(r){ if(!r.ok) throw new Error('fetch'); return r.json(); });
 }
 
-// 偵測新資料 → 自動 reload（index.html 是靜態的，reload 速度極快）
 function checkForUpdate() {
   fetchData().then(function(data){
     if (_efpLastUpdated && data.updated > _efpLastUpdated) {
@@ -143,7 +135,6 @@ function checkForUpdate() {
   }).catch(function(){});
 }
 
-// 開始輪詢更新
 function startPolling() {
   if (_efpPollStarted) return;
   _efpPollStarted = true;
@@ -208,7 +199,6 @@ function go() {
   }, 50);
 }
 
-// 頁面載入：嘗試自動登入
 window.addEventListener('DOMContentLoaded', function(){
   document.getElementById('pwd').value = '';
   var dkh = loadSess();
@@ -220,7 +210,6 @@ window.addEventListener('DOMContentLoaded', function(){
   }).catch(function(){});
 });
 
-// 強制登出並徹底清除 Service Worker / Browser Caches
 function clearAndReload() {
   localStorage.removeItem(SK);
   if ('serviceWorker' in navigator) {
@@ -247,7 +236,6 @@ function clearAndReload() {
   location.reload();
 }
 
-// Service Worker：強制 data.enc/health.json 從網路抓，index.html 可快取
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./service-worker.js').catch(function(){});
 }
