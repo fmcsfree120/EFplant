@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>EFplant - Secure Access</title>
+<title>FMCS - Facility Monitor Control System</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
 <style>
 :root{
@@ -21,75 +21,390 @@ body{
   font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
   height:100vh;display:flex;align-items:center;justify-content:center;
 }
-#lock-screen{width:100%;display:flex;justify-content:center;padding:16px;}
-.panel{
-  border:1px solid var(--bd);border-top:3px solid var(--cyan);
-  padding:36px 28px;display:flex;flex-direction:column;
-  align-items:center;gap:16px;background:var(--sf);
-  border-radius:6px;width:100%;max-width:360px;
-  box-shadow:0 10px 15px -3px rgba(0,0,0,0.3);
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   CYBER TECH LOGIN OVERLAY STYLES
+   ───────────────────────────────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+
+#lock-screen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: radial-gradient(circle at center, #0c142b 0%, #030712 100%);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 99999;
+  font-family: 'Share Tech Mono', Consolas, Monaco, monospace;
+  overflow: hidden;
+  box-sizing: border-box;
 }
-.logo{
-  font-size:1.8em;font-weight:700;letter-spacing:3px;
-  color:var(--cyan);white-space:nowrap;text-align:center;
+
+.cyber-grid {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-image: 
+    linear-gradient(rgba(0, 240, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 240, 255, 0.03) 1px, transparent 1px);
+  background-size: 30px 30px;
+  background-position: center;
+  pointer-events: none;
 }
-.sub{
-  color:var(--dim);font-size:.72em;letter-spacing:1.5px;
-  margin-top:-10px;text-transform:uppercase;white-space:nowrap;
+
+.cyber-scanline {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: linear-gradient(
+    rgba(18, 16, 16, 0) 50%, 
+    rgba(0, 0, 0, 0.25) 50%
+  ), linear-gradient(
+    90deg, 
+    rgba(255, 0, 0, 0.04), 
+    rgba(0, 255, 0, 0.02), 
+    rgba(0, 0, 255, 0.04)
+  );
+  background-size: 100% 4px, 6px 100%;
+  pointer-events: none;
 }
-hr{width:100%;border:none;border-top:1px solid var(--bd);}
-.lbl{
-  color:var(--dim);font-size:.72em;letter-spacing:1px;
-  align-self:flex-start;white-space:nowrap;font-weight:600;
+
+.cyber-scanline::after {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 4px;
+  background: linear-gradient(to bottom, transparent, rgba(0, 240, 255, 0.3), transparent);
+  animation: lock-scan 4s linear infinite;
+  opacity: 0.8;
 }
-#pwd{
-  width:100%;background:#0f172a;
-  border:1px solid var(--bd);border-bottom:2px solid var(--cyan);
-  color:#fff;font-family:inherit;font-size:1.1em;
-  padding:11px 14px;outline:none;letter-spacing:4px;
-  border-radius:4px 4px 0 0;
-  transition:border-color 0.25s;
+
+@keyframes lock-scan {
+  0% { top: -5%; }
+  100% { top: 105%; }
 }
-#pwd:focus{border-color:var(--cyan);box-shadow:0 0 0 2px rgba(59,130,246,0.15);}
-#pwd.err{border-bottom-color:var(--red);}
-#btn{
-  width:100%;padding:12px;background:var(--cyan);border:none;
-  color:#fff;font-family:inherit;font-size:.95em;
-  font-weight:700;letter-spacing:1px;cursor:pointer;
-  border-radius:4px;white-space:nowrap;transition:opacity .2s;
+
+#lock-screen .panel {
+  border: 1px solid rgba(0, 240, 255, 0.25);
+  border-top: 4px solid #00f0ff;
+  padding: 30px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  background: rgba(10, 17, 34, 0.88);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 8px;
+  width: 90%;
+  max-width: 380px;
+  box-shadow: 
+    0 15px 35px rgba(0,0,0,0.6),
+    0 0 15px rgba(0, 240, 255, 0.1);
+  position: relative;
+  z-index: 10;
 }
-#btn:hover{opacity:.85;}
-#btn:disabled{opacity:.5;cursor:not-allowed;}
-#err{color:var(--red);display:none;font-size:.78em;
-  letter-spacing:1px;white-space:nowrap;font-weight:600;}
-#loading{display:none;color:var(--cyan);font-size:.75em;
-  letter-spacing:1px;white-space:nowrap;}
+
+.fplus-badge-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: -4px;
+}
+.fplus-bracket {
+  font-size: 2rem;
+  font-weight: 300;
+  color: rgba(0, 240, 255, 0.4);
+  line-height: 1;
+}
+.fplus-core {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: #00f0ff;
+  text-shadow: 0 0 8px rgba(0, 240, 255, 0.6);
+  letter-spacing: 1px;
+  animation: pulse-spirit 2s infinite ease-in-out;
+}
+
+@keyframes pulse-spirit {
+  0%, 100% { text-shadow: 0 0 4px rgba(0, 240, 255, 0.5); opacity: 0.8; }
+  50% { text-shadow: 0 0 15px rgba(0, 240, 255, 0.9); opacity: 1; }
+}
+
+#lock-screen .logo {
+  font-size: 2.2rem;
+  font-weight: 800;
+  letter-spacing: 5px;
+  color: #fff;
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.4);
+  white-space: nowrap;
+  text-align: center;
+}
+
+#lock-screen .sub {
+  color: #a2b9d2;
+  font-size: 0.68rem;
+  letter-spacing: 1.2px;
+  margin-top: -6px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  text-align: center;
+  opacity: 0.8;
+}
+
+.terminal-header {
+  font-size: 0.58rem;
+  color: rgba(0, 240, 255, 0.6);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin-top: 4px;
+  font-weight: bold;
+}
+
+.cyber-hr {
+  width: 100%;
+  border: none;
+  border-top: 1px dashed rgba(0, 240, 255, 0.2);
+}
+
+.telemetry-panel {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px 16px;
+  width: 100%;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 4px;
+  border: 1px solid rgba(0, 240, 255, 0.1);
+  box-sizing: border-box;
+}
+.tel-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.tel-lbl {
+  font-size: 0.52rem;
+  color: rgba(162, 185, 210, 0.6);
+  letter-spacing: 0.5px;
+  text-align: left;
+}
+.tel-val {
+  font-size: 0.65rem;
+  color: #f1f5f9;
+  font-weight: bold;
+  text-align: left;
+}
+.glow-cyan { color: #00f0ff; text-shadow: 0 0 4px rgba(0, 240, 255, 0.4); }
+.glow-green { color: #10b981; text-shadow: 0 0 4px rgba(16, 185, 129, 0.4); }
+.glow-amber { color: #f59e0b; text-shadow: 0 0 4px rgba(245, 158, 11, 0.4); }
+
+#lock-screen .lbl {
+  color: rgba(162, 185, 210, 0.8);
+  font-size: 0.68rem;
+  letter-spacing: 1.5px;
+  align-self: flex-start;
+  font-weight: 600;
+}
+
+.input-wrapper {
+  width: 100%;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.input-arrow {
+  position: absolute;
+  left: 12px;
+  color: #00f0ff;
+  font-size: 1rem;
+  pointer-events: none;
+  font-weight: bold;
+}
+#lock-screen #pwd {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(0, 240, 255, 0.3);
+  border-left: 3px solid #00f0ff;
+  color: #fff;
+  font-family: inherit;
+  font-size: 1.1rem;
+  padding: 10px 12px 10px 30px;
+  outline: none;
+  letter-spacing: 6px;
+  border-radius: 4px;
+  transition: all 0.25s ease;
+  box-sizing: border-box;
+}
+#lock-screen #pwd:focus {
+  border-color: #00f0ff;
+  box-shadow: 
+    0 0 10px rgba(0, 240, 255, 0.15),
+    inset 0 0 5px rgba(0, 240, 255, 0.05);
+}
+#lock-screen #pwd.err {
+  border-color: #ef4444;
+  border-left-color: #ef4444;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.2);
+}
+
+#lock-screen #btn {
+  width: 100%;
+  padding: 12px;
+  background: transparent;
+  border: 1px solid #00f0ff;
+  color: #00f0ff;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  cursor: pointer;
+  border-radius: 4px;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+  box-shadow: inset 0 0 4px rgba(0, 240, 255, 0.1);
+  position: relative;
+  overflow: hidden;
+}
+#lock-screen #btn:hover:not(:disabled) {
+  background: rgba(0, 240, 255, 0.1);
+  color: #fff;
+  box-shadow: 
+    0 0 15px rgba(0, 240, 255, 0.3),
+    inset 0 0 8px rgba(0, 240, 255, 0.2);
+  text-shadow: 0 0 4px #fff;
+}
+#lock-screen #btn:disabled {
+  border-color: rgba(0, 240, 255, 0.2);
+  color: rgba(0, 240, 255, 0.2);
+  cursor: not-allowed;
+}
+
+.terminal-logs {
+  width: 100%;
+  min-height: 72px;
+  max-height: 100px;
+  overflow-y: auto;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(0, 240, 255, 0.15);
+  border-radius: 4px;
+  padding: 8px 10px;
+  box-sizing: border-box;
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+}
+.log-line {
+  font-size: 0.58rem;
+  line-height: 1.3;
+  letter-spacing: 0.5px;
+  text-align: left;
+  white-space: normal;
+  word-break: break-all;
+}
+.text-cyan { color: #00f0ff; }
+.text-green { color: #10b981; }
+.text-red { color: #ef4444; }
+
+.cyber-err {
+  display: none;
+  color: #ef4444;
+  font-size: 0.68rem;
+  letter-spacing: 1px;
+  white-space: normal;
+  text-align: center;
+  font-weight: bold;
+  animation: glitch-vibrate 0.15s infinite alternate;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  padding: 8px 12px;
+  width: 100%;
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+
+@keyframes glitch-vibrate {
+  0% { transform: translate(1px, 1px) rotate(0deg); }
+  100% { transform: translate(-1px, -1px) rotate(0.5deg); }
+}
+
+.reload-btn {
+  background: transparent;
+  border: none;
+  color: rgba(162, 185, 210, 0.5);
+  font-family: inherit;
+  font-size: 0.6rem;
+  cursor: pointer;
+  letter-spacing: 1px;
+  font-weight: bold;
+  transition: color 0.15s ease;
+}
+.reload-btn:hover {
+  color: #00f0ff;
+  text-decoration: underline;
+}
 </style>
 </head>
 <body>
 <div id="lock-screen">
+  <div class="cyber-grid"></div>
+  <div class="cyber-scanline"></div>
   <div class="panel">
-    <div class="logo">EFplant</div>
-    <div class="sub">Secure Access Terminal</div>
-    <hr>
+    <div class="fplus-badge-container">
+      <div class="fplus-bracket">[</div>
+      <div class="fplus-core">F+</div>
+      <div class="fplus-bracket">]</div>
+    </div>
+    <div class="logo">FMCS</div>
+    <div class="sub">Facility Monitor Control System</div>
+    <div class="terminal-header">FMCS SECURE AUTHORIZATION DECK</div>
+    <hr class="cyber-hr">
+    
+    <div class="telemetry-panel">
+      <div class="tel-row"><span class="tel-lbl">CORE SPIRIT</span><span class="tel-val glow-cyan">F+ ACTIVE</span></div>
+      <div class="tel-row"><span class="tel-lbl">NODE COMPILER</span><span class="tel-val glow-green">ONLINE</span></div>
+      <div class="tel-row"><span class="tel-lbl">SECURE SUITE</span><span class="tel-val">AES-256-CBC</span></div>
+      <div class="tel-row"><span class="tel-lbl">SYSTEM BASE</span><span class="tel-val glow-amber">STABLE</span></div>
+    </div>
+    
+    <hr class="cyber-hr">
     <div class="lbl">ACCESS CODE</div>
-    <input type="password" id="pwd"
-           placeholder="&#x25CF;&#x25CF;&#x25CF;&#x25CF;&#x25CF;&#x25CF;&#x25CF;&#x25CF;"
-           autocomplete="new-password" onkeydown="if(event.key==='Enter')go()">
-    <button id="btn" onclick="go()">登入系統 / LOG IN</button>
-    <div id="err">&#9888; ACCESS DENIED</div>
-    <div id="loading">DECRYPTING... &#x23F3;</div>
-    <hr style="width:100%;border:none;border-top:1px solid var(--bd);margin-top:4px;">
-    <button onclick="clearAndReload()"
-            style="background:transparent;border:none;color:var(--dim);
-                   font-family:inherit;font-size:.68em;cursor:pointer;letter-spacing:1px;font-weight:600;">
-      &#x1F504; 清除快取重新整理
+    
+    <div class="input-wrapper">
+      <span class="input-arrow">&gt;</span>
+      <input type="password" id="pwd"
+             placeholder="••••••••"
+             autocomplete="new-password" onkeydown="if(event.key==='Enter')go()">
+    </div>
+    
+    <button id="btn" onclick="go()">AUTHORIZE ACCESS</button>
+    
+    <div id="loading" class="terminal-logs"></div>
+    <div id="err" class="cyber-err"></div>
+    
+    <hr class="cyber-hr" style="margin-top: 8px;">
+    <button onclick="clearAndReload()" class="reload-btn">
+      🔄 RESET SYSTEM CACHE & RELOAD
     </button>
   </div>
 </div>
 <script>
+// 立即判斷：有 Session 則保持隱藏，無 Session 則立即顯示登入面板（防止閃屏關鍵）
+(function(){
+  try {
+    var d = JSON.parse(localStorage.getItem('ef_sess_v2'));
+    if (!d || d.exp <= Date.now() || !d.dk) {
+      document.getElementById('lock-screen').style.display = 'flex';
+    }
+  } catch(e) {
+    document.getElementById('lock-screen').style.display = 'flex';
+  }
+})();
+</script>
+<script>
 var SK = 'ef_sess_v2';
-var SEXP = 30 * 60 * 1000;
+var SEXP = 8 * 60 * 60 * 1000; // 8小時 Session 有效期
 var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
@@ -160,8 +475,11 @@ function renderDashboard(data, dkh) {
 function showError(msg) {
   var e = document.getElementById('err');
   if (e) {
-    if (msg) e.textContent = msg;
-    e.style.color = '#ff3d00';
+    if (msg) {
+      e.innerHTML = '<span class="err-icon">⚠️</span> ' + msg;
+    } else {
+      e.innerHTML = '<span class="err-icon">⚠️</span> ACCESS DENIED: SYSTEM AUTHORIZATION FAILED';
+    }
     e.style.display = 'block';
   }
   var p = document.getElementById('pwd');
@@ -169,7 +487,7 @@ function showError(msg) {
   setTimeout(function(){
     if (e) e.style.display = 'none';
     if (p) p.classList.remove('err');
-  }, 2000);
+  }, 2200);
   if (p) p.focus();
 }
 
@@ -177,37 +495,97 @@ function go() {
   var p = document.getElementById('pwd').value;
   if (!p) return;
   var e = document.getElementById('err');
+  var loading = document.getElementById('loading');
+  var btn = document.getElementById('btn');
+  
   if (e) e.style.display = 'none';
-  document.getElementById('loading').style.display = 'block';
-  document.getElementById('btn').disabled = true;
+  if (btn) btn.disabled = true;
+  
+  if (loading) {
+    loading.style.display = 'flex';
+    loading.innerHTML = '<div class="log-line text-cyan">&gt; INITIATING SECURITY CONSOLE ACCESS...</div>';
+  }
 
-  setTimeout(function(){
-    fetchData().then(function(data){
-      var salt = CryptoJS.enc.Hex.parse(data.salt);
-      var dk = CryptoJS.PBKDF2(p, salt, {keySize:256/32, iterations:100000, hasher:CryptoJS.algo.SHA256});
-      var dkh = CryptoJS.enc.Hex.stringify(dk);
-      if (!renderDashboard(data, dkh)) {
-        showError();
-        document.getElementById('loading').style.display = 'none';
-        document.getElementById('btn').disabled = false;
-      }
-    }).catch(function(){
-      showError('NETWORK ERROR');
-      document.getElementById('loading').style.display = 'none';
-      document.getElementById('btn').disabled = false;
-    });
-  }, 50);
+  function appendLog(text, className) {
+    if (!loading) return;
+    var line = document.createElement('div');
+    line.className = 'log-line ' + (className || 'text-cyan');
+    line.innerHTML = text;
+    loading.appendChild(line);
+    loading.scrollTop = loading.scrollHeight;
+  }
+
+  setTimeout(function() {
+    appendLog('&gt; ESTABLISHING SECURE HANDSHAKE PATH...');
+    
+    setTimeout(function() {
+      appendLog('&gt; TRANSITING ENCRYPTED DATAPACK FROM HOST...');
+      
+      fetchData().then(function(data) {
+        appendLog('&gt; SECURE ENVELOPE ACQUIRED (v' + (data.v || '2') + ')');
+        
+        setTimeout(function() {
+          appendLog('&gt; CALCULATING PBKDF2 DERIVATION KEY (100k ITERATIONS)...');
+          
+          setTimeout(function() {
+            try {
+              var salt = CryptoJS.enc.Hex.parse(data.salt);
+              var dk = CryptoJS.PBKDF2(p, salt, {keySize:256/32, iterations:100000, hasher:CryptoJS.algo.SHA256});
+              var dkh = CryptoJS.enc.Hex.stringify(dk);
+              
+              appendLog('&gt; SECURING DERIVED INDEX: ' + dkh.substring(0, 16) + '...');
+              appendLog('&gt; ATTEMPTING AES-256 MASTER KEY DECRYPTION...');
+              
+              setTimeout(function() {
+                if (renderDashboard(data, dkh)) {
+                  appendLog('&gt; SECURITY PAYLOAD VERIFIED. INTEGRITY 100%.', 'text-green');
+                  appendLog('&gt; AUTHORIZATION GRANTED. REDIRECTING...', 'text-green');
+                } else {
+                  appendLog('&gt; CIPHER DISCREPANCY: AES INTEGRITY CHECK FAILED', 'text-red');
+                  setTimeout(function() {
+                    showError('ACCESS DENIED: VALIDATION DEVIATION');
+                    loading.style.display = 'none';
+                    btn.disabled = false;
+                  }, 400);
+                }
+              }, 150);
+            } catch(errEx) {
+              appendLog('&gt; CRITICAL ERROR DURING CRYPTO-DERIVATION: ' + errEx.message, 'text-red');
+              setTimeout(function() {
+                showError('ACCESS DENIED: CRYPTO ERROR');
+                loading.style.display = 'none';
+                btn.disabled = false;
+              }, 400);
+            }
+          }, 30);
+        }, 150);
+      }).catch(function(err) {
+        appendLog('&gt; NETWORK ACCESS PORT DROPPED.', 'text-red');
+        setTimeout(function() {
+          showError('NETWORK TRANSIT FAILURE');
+          loading.style.display = 'none';
+          btn.disabled = false;
+        }, 400);
+      });
+    }, 150);
+  }, 100);
 }
 
 window.addEventListener('DOMContentLoaded', function(){
   document.getElementById('pwd').value = '';
   var dkh = loadSess();
-  if (!dkh) return;
+  if (!dkh) {
+    document.getElementById('lock-screen').style.display = 'flex';
+    return;
+  }
   fetchData().then(function(data){
     if (!renderDashboard(data, dkh)) {
       localStorage.removeItem(SK);
+      document.getElementById('lock-screen').style.display = 'flex';
     }
-  }).catch(function(){});
+  }).catch(function(){
+    document.getElementById('lock-screen').style.display = 'flex';
+  });
 });
 
 function clearAndReload() {
