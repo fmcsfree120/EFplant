@@ -73,10 +73,11 @@ body{
 .cyber-scanline::after {
   content: "";
   position: absolute;
-  top: 0; left: 0; right: 0; height: 4px;
-  background: linear-gradient(to bottom, transparent, rgba(0, 240, 255, 0.3), transparent);
-  animation: lock-scan 4s linear infinite;
-  opacity: 0.8;
+  top: 0; left: 0; right: 0; height: 12px;
+  background: linear-gradient(to bottom, transparent, #00f0ff, transparent);
+  box-shadow: 0 0 15px rgba(0, 240, 255, 0.8);
+  animation: lock-scan 2s linear infinite;
+  opacity: 1.0;
 }
 
 @keyframes lock-scan {
@@ -356,9 +357,9 @@ body{
       <div class="fplus-core">F+</div>
       <div class="fplus-bracket">]</div>
     </div>
-    <div class="logo">FMCS</div>
+    <div class="logo">EFplant</div>
     <div class="sub">Facility Monitor Control System</div>
-    <div class="terminal-header">FMCS SECURE AUTHORIZATION DECK</div>
+    <div class="terminal-header">POWERED BY FMCS DECK</div>
     <hr class="cyber-hr">
     
     <div class="telemetry-panel">
