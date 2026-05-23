@@ -106,33 +106,6 @@ body{
   z-index: 10;
 }
 
-.fplus-badge-container {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  margin-bottom: -4px;
-}
-.fplus-bracket {
-  font-size: 2rem;
-  font-weight: 300;
-  color: rgba(0, 240, 255, 0.4);
-  line-height: 1;
-}
-.fplus-core {
-  font-size: 1.8rem;
-  font-weight: 700;
-  color: #00f0ff;
-  text-shadow: 0 0 8px rgba(0, 240, 255, 0.6);
-  letter-spacing: 1px;
-  animation: pulse-spirit 2s infinite ease-in-out;
-}
-
-@keyframes pulse-spirit {
-  0%, 100% { text-shadow: 0 0 4px rgba(0, 240, 255, 0.5); opacity: 0.8; }
-  50% { text-shadow: 0 0 15px rgba(0, 240, 255, 0.9); opacity: 1; }
-}
-
 #lock-screen .logo {
   font-size: 2.2rem;
   font-weight: 800;
@@ -155,12 +128,24 @@ body{
 }
 
 .terminal-header {
-  font-size: 0.58rem;
-  color: rgba(0, 240, 255, 0.6);
-  letter-spacing: 1.5px;
+  font-size: 0.95rem; /* Enlarge but smaller than EFplant's 2.2rem */
+  color: #00f0ff;     /* Brighter sky-cyan */
+  letter-spacing: 2px;
   text-transform: uppercase;
   margin-top: 4px;
   font-weight: bold;
+  text-shadow: 0 0 12px rgba(0, 240, 255, 0.8), 0 0 4px rgba(0, 240, 255, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.fplus-inline {
+  font-weight: 800;
+  color: #00f0ff;
+  text-shadow: 0 0 12px rgba(0, 240, 255, 0.9);
+  letter-spacing: 1px;
 }
 
 .cyber-hr {
@@ -352,14 +337,9 @@ body{
   <div class="cyber-grid"></div>
   <div class="cyber-scanline"></div>
   <div class="panel">
-    <div class="fplus-badge-container">
-      <div class="fplus-bracket">[</div>
-      <div class="fplus-core">F+</div>
-      <div class="fplus-bracket">]</div>
-    </div>
     <div class="logo">EFplant</div>
     <div class="sub">Facility Monitor Control System</div>
-    <div class="terminal-header">POWERED BY FMCS DECK</div>
+    <div class="terminal-header">POWERED BY FMCS DECK <span class="fplus-inline">[F+]</span></div>
     <hr class="cyber-hr">
     
     <div class="telemetry-panel">
