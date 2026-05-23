@@ -12,11 +12,16 @@
 // 立即防禦性 Session 驗證，防止未授權直接進入而閃爍
 (function() {
   var SK = 'ef_sess_v2';
+  var SEXP_8H = 8 * 60 * 60 * 1000; // 8小時
   try {
     var d = JSON.parse(localStorage.getItem(SK));
     if (!d || d.exp <= Date.now() || !d.dk) {
       localStorage.removeItem(SK);
       window.location.replace("index.html");
+    } else {
+      // Session 有效，順手延长到 8 小時（保持登入狀態）
+      d.exp = Date.now() + SEXP_8H;
+      localStorage.setItem(SK, JSON.stringify(d));
     }
   } catch(e) {
     localStorage.removeItem(SK);
