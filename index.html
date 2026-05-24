@@ -73,9 +73,13 @@ body{
 .cyber-scanline::after {
   content: "";
   position: absolute;
-  top: 0; left: 0; right: 0; height: 12px;
-  background: linear-gradient(to bottom, transparent, #00f0ff, transparent);
-  box-shadow: 0 0 15px rgba(0, 240, 255, 0.8);
+  top: 0; left: 0; right: 0; height: 20px;
+  background: linear-gradient(to bottom, transparent, #00f0ff 40%, #ffffff 50%, #00f0ff 60%, transparent);
+  box-shadow: 
+    0 0 10px #00f0ff,
+    0 0 25px #00f0ff,
+    0 0 50px #00f0ff,
+    0 0 80px rgba(0, 240, 255, 0.6);
   animation: lock-scan 2s linear infinite;
   opacity: 1.0;
 }

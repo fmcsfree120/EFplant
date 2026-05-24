@@ -534,6 +534,7 @@ const METRIC_METADATA = {
     warningVal: '0.85 kW/RT',
     yMin: 0.45,
     yMax: 1.25,
+    fixedYMin: 0.00,
     fixedYMax: 1.50,
     precision: 3,
     controlVal: 0.70,
@@ -549,6 +550,7 @@ const METRIC_METADATA = {
     warningVal: '6.00 CMM/KWH',
     yMin: 4.0,
     yMax: 15.0,
+    fixedYMin: 0.00,
     fixedYMax: 20.0,
     precision: 2,
     controlVal: 7.00,
@@ -719,9 +721,12 @@ function renderChartData() {
   yMin = Math.min(yMin, Math.max(0, Math.min(meta.controlVal, meta.warningValNum) - padding));
   yMax = Math.max(yMax, Math.max(meta.controlVal, meta.warningValNum) + padding);
 
-  // 若設定了固定的 Y 軸頂點，則強制套用（但若實際數值超出，仍會擴展以確保極值在圖表內可見）
+  // ── 確保 Y 軸刻度範圍嚴格固定（若 meta 有定義 fixedYMin 與 fixedYMax，則強制套用）────
+  if (meta.fixedYMin !== undefined) {
+    yMin = meta.fixedYMin;
+  }
   if (meta.fixedYMax !== undefined) {
-    yMax = Math.max(meta.fixedYMax, dataMax + padding);
+    yMax = meta.fixedYMax;
   }
 
   // 四捨五入到合適的精度，讓 Y 軸刻度更整齊
