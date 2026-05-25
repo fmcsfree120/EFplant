@@ -123,5 +123,32 @@
     "WDCA34",
     "WDCA35",
     "WDCA37"
+  ],
+  "S3": [
+    "A016",
+    "A017",
+    "ACEA001",
+    "ACEA002",
+    "ACEA003",
+    "ACEA004",
+    "ACEA005",
+    "ACEA009",
+    "ACEA019",
+    "ACEA020",
+    "ALKA006",
+    "ALKA007",
+    "ALKA008",
+    "CHU01",
+    "CHU02",
+    "CHU03",
+    "CHU04",
+    "PCW1F",
+    "PCW3F",
+    "PCW5F",
+    "PCW6F",
+    "PCW8F",
+    "PCWB1F",
+    "VOCA010",
+    "VOCA011"
   ]
 }
