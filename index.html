@@ -2,8 +2,12 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover">
 <title>FMCS - Facility Monitor Control System</title>
+<!-- iOS PWA Standalone Meta -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="EFplant">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
 <style>
 :root{
@@ -394,6 +398,22 @@ var SEXP = 8 * 60 * 60 * 1000; // 8小時 Session 有效期
 var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
+
+// 防止 iOS Standalone 模式下點擊連結跳出 standalone App 外殼
+(function() {
+  if (("standalone" in window.navigator) && window.navigator.standalone) {
+    document.addEventListener('click', function(event) {
+      var noddy = event.target;
+      while (noddy.nodeName !== "A" && noddy.nodeName !== "HTML") {
+        noddy = noddy.parentNode;
+      }
+      if ('href' in noddy && noddy.href.indexOf('http') !== -1 && noddy.href.indexOf(document.location.host) !== -1) {
+        event.preventDefault();
+        document.location.href = noddy.href;
+      }
+    }, false);
+  }
+})();
 
 // 跨頁面且持久的一致性 Session ID
 (function() {
