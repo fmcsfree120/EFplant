@@ -445,6 +445,7 @@ footer {
   <div class="tabs-container">
     <button class="tab-btn active" id="tab-ch" onclick="switchMetric('冰機效率', this)">冰機效率</button>
     <button class="tab-btn" id="tab-cda" onclick="switchMetric('空壓效率', this)">空壓效率</button>
+    <button class="tab-btn" id="tab-rr" onclick="switchMetric('運轉率', this)">運轉率</button>
   </div>
 
   <!-- 折線圖面板 -->
@@ -555,6 +556,22 @@ const METRIC_METADATA = {
     precision: 2,
     controlVal: 7.00,
     warningValNum: 6.00
+  },
+  '運轉率': {
+    title: '設備運轉率趨勢圖',
+    subtitle: '各廠區整點更新之設備運轉率(%，越高代表稼動率表現越佳)',
+    unit: '%',
+    normalLine: '正常運轉目標線',
+    normalVal: '> 85.0 %',
+    warningLine: '預警低產能限制線 (LOW)',
+    warningVal: '70.0 %',
+    yMin: 0.0,
+    yMax: 100.0,
+    fixedYMin: 0.00,
+    fixedYMax: 100.0,
+    precision: 2,
+    controlVal: 85.0,
+    warningValNum: 70.0
   }
 };
 
@@ -586,6 +603,35 @@ function updateMetricUI() {
 }
 
 var SK = 'ef_sess_v2';
+var API_BASE = localStorage.getItem('ef_api_base');
+
+function sendLog(action, success, indexId) {
+  if (!API_BASE) return;
+  var sess = null;
+  try { sess = JSON.parse(localStorage.getItem(SK)) || {}; } catch(e) {}
+  var sessId = localStorage.getItem('ef_sess_id') || '';
+  var payload = {
+    action: action,
+    success: success !== undefined ? success : true,
+    index_id: indexId || '',
+    session_id: sessId,
+    timestamp: Date.now()
+  };
+  if (action === 'LOGOUT' && sess && sess.login_time) {
+    var durSec = Math.floor((Date.now() - sess.login_time) / 1000);
+    var h = Math.floor(durSec / 3600);
+    var m = Math.floor((durSec % 3600) / 60);
+    var s = durSec % 60;
+    payload.duration = (h > 0 ? h + 'h ' : '') + (m > 0 ? m + 'm ' : '') + s + 's';
+  }
+  fetch(API_BASE + '/api/log', {
+    method: 'POST',
+    mode: 'cors',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  }).catch(function(e) {});
+}
+
 var myChart = null;
 var currentMetric = '冰機效率';
 var chartTimestamps = [];
@@ -1075,7 +1121,14 @@ function reloadKeepSess() {
 }
 
 function logOut() {
+  sendLog('LOGOUT', true, (function(){
+    try {
+      var d = JSON.parse(localStorage.getItem(SK));
+      return d ? d.dk.substring(0, 32) : '';
+    } catch(e) { return ''; }
+  })());
   localStorage.removeItem(SK);
+  localStorage.removeItem('ef_sess_id');
   var base = location.protocol + '//' + location.host;
   var path = location.pathname;
   if (path.endsWith('chart.html')) {

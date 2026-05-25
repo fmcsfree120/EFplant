@@ -388,14 +388,61 @@ body{
 })();
 </script>
 <script>
+var API_BASE = "http://192.168.120.106:47313";
 var SK = 'ef_sess_v2';
 var SEXP = 8 * 60 * 60 * 1000; // 8小時 Session 有效期
 var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 
+// 跨頁面且持久的一致性 Session ID
+(function() {
+  try {
+    var sId = localStorage.getItem('ef_sess_id');
+    if (!sId) {
+      sId = (Math.random().toString(36).substring(2) + Date.now().toString(36)).substring(0, 16);
+      localStorage.setItem('ef_sess_id', sId);
+    }
+    if (API_BASE) {
+      localStorage.setItem('ef_api_base', API_BASE);
+    }
+  } catch(e) {}
+})();
+
+function sendLog(action, success, indexId) {
+  if (!API_BASE) return;
+  var sess = null;
+  try { sess = JSON.parse(localStorage.getItem(SK)) || {}; } catch(e) {}
+  var sessId = localStorage.getItem('ef_sess_id') || '';
+  var payload = {
+    action: action,
+    success: success !== undefined ? success : true,
+    index_id: indexId || '',
+    session_id: sessId,
+    timestamp: Date.now()
+  };
+  if (action === 'LOGOUT' && sess && sess.login_time) {
+    var durSec = Math.floor((Date.now() - sess.login_time) / 1000);
+    var h = Math.floor(durSec / 3600);
+    var m = Math.floor((durSec % 3600) / 60);
+    var s = durSec % 60;
+    payload.duration = (h > 0 ? h + 'h ' : '') + (m > 0 ? m + 'm ' : '') + s + 's';
+  }
+  fetch(API_BASE + '/api/log', {
+    method: 'POST',
+    mode: 'cors',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  }).catch(function(e) {});
+}
+
 function saveSess(dkh) {
-  try { localStorage.setItem(SK, JSON.stringify({dk:dkh, exp:Date.now()+SEXP})); } catch(e){}
+  try {
+    var existing = null;
+    try { existing = JSON.parse(localStorage.getItem(SK)); } catch(ex){}
+    var ltime = (existing && existing.login_time) ? existing.login_time : Date.now();
+    localStorage.setItem(SK, JSON.stringify({dk:dkh, exp:Date.now()+SEXP, login_time:ltime}));
+  } catch(e){}
 }
 function loadSess() {
   try {
@@ -525,8 +572,10 @@ function go() {
                 if (renderDashboard(data, dkh)) {
                   appendLog('&gt; SECURITY PAYLOAD VERIFIED. INTEGRITY 100%.', 'text-green');
                   appendLog('&gt; AUTHORIZATION GRANTED. REDIRECTING...', 'text-green');
+                  sendLog('LOGIN', true, dkh.substring(0, 32));
                 } else {
                   appendLog('&gt; CIPHER DISCREPANCY: AES INTEGRITY CHECK FAILED', 'text-red');
+                  sendLog('LOGIN', false, dkh.substring(0, 32));
                   setTimeout(function() {
                     showError('ACCESS DENIED: VALIDATION DEVIATION');
                     loading.style.display = 'none';
@@ -536,6 +585,7 @@ function go() {
               }, 150);
             } catch(errEx) {
               appendLog('&gt; CRITICAL ERROR DURING CRYPTO-DERIVATION: ' + errEx.message, 'text-red');
+              sendLog('LOGIN', false, '');
               setTimeout(function() {
                 showError('ACCESS DENIED: CRYPTO ERROR');
                 loading.style.display = 'none';
