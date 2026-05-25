@@ -4,31 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover">
 <title>EFplant - Quality Trend Charts</title>
-<!-- iOS PWA Standalone Meta -->
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="EFplant">
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <!-- 引入 CryptoJS 與 Apache ECharts 繪圖庫 -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.4.3/echarts.min.js"></script>
 <script>
-// 防止 iOS Standalone 模式下點擊連結跳出 standalone App 外殼
-(function() {
-  if (("standalone" in window.navigator) && window.navigator.standalone) {
-    document.addEventListener('click', function(event) {
-      var noddy = event.target;
-      while (noddy.nodeName !== "A" && noddy.nodeName !== "HTML") {
-        noddy = noddy.parentNode;
-      }
-      if ('href' in noddy && noddy.href.indexOf('http') !== -1 && noddy.href.indexOf(document.location.host) !== -1) {
-        event.preventDefault();
-        document.location.href = noddy.href;
-      }
-    }, false);
-  }
-})();
-
 // 立即防禦性 Session 驗證，防止未授權直接進入而閃爍
 (function() {
   var SK = 'ef_sess_v2';
