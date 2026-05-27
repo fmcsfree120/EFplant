@@ -240,5 +240,31 @@
     "VSCRA034",
     "VSCRA047",
     "WDUSTA042"
+  ],
+  "HJ2": [
+    "ASCRA002",
+    "ASCRA003",
+    "BSCRA001",
+    "CDA201",
+    "CDA301",
+    "CEDI401A",
+    "CEDI401B",
+    "CH01",
+    "CH02",
+    "CH03",
+    "DUSTA004",
+    "DUSTA005",
+    "MAU102",
+    "MAU103",
+    "MAU201",
+    "MAU301",
+    "PAH101",
+    "PAH201",
+    "PAH202",
+    "PAH301",
+    "PAH302",
+    "PCWP1F",
+    "PCWP2F",
+    "PCWP3F"
   ]
 }
