@@ -391,12 +391,17 @@
     "CH02",
     "CH03",
     "PCWP1F",
+    "PCWP1F1",
+    "PCWP1FS",
     "PCWP2FLD",
+    "PCWP2FLDS",
     "PCWP2FLM",
     "PCWP2FOCU",
     "PCWP3FCDA1",
     "PCWP3FCDA2",
     "PCWP3FDCC",
-    "PCWP4F"
+    "PCWP4F",
+    "PCWP4F1",
+    "PCWP4F2"
   ]
 }
