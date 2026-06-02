@@ -379,5 +379,24 @@
     "PCWP406",
     "PCWPB201",
     "PCWPB202"
+  ],
+  "LC2": [
+    "CDA01",
+    "CDA02",
+    "CEDIP-410A",
+    "CEDIP-410B",
+    "CEDIP-411A",
+    "CEDIP-411B",
+    "CH01",
+    "CH02",
+    "CH03",
+    "PCWP1F",
+    "PCWP2FLD",
+    "PCWP2FLM",
+    "PCWP2FOCU",
+    "PCWP3FCDA1",
+    "PCWP3FCDA2",
+    "PCWP3FDCC",
+    "PCWP4F"
   ]
 }
