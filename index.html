@@ -409,6 +409,19 @@ var _efpPollStarted = false;
   } catch(e) {}
 })();
 
+function getDeviceId() {
+  try {
+    var id = localStorage.getItem('ef_device_id');
+    if (!id) {
+      id = 'EF-' + (Math.random().toString(36).substring(2) + Date.now().toString(36)).substring(0, 18).toUpperCase();
+      localStorage.setItem('ef_device_id', id);
+    }
+    return id;
+  } catch(e) {
+    return 'EF-UNKNOWN';
+  }
+}
+
 function sendLog(action, success, indexId) {
   if (!API_BASE) return;
   var sess = null;
@@ -418,6 +431,7 @@ function sendLog(action, success, indexId) {
     action: action,
     success: success !== undefined ? success : true,
     index_id: indexId || '',
+    device_id: getDeviceId(),
     session_id: sessId,
     timestamp: Date.now()
   };
