@@ -442,12 +442,21 @@ function sendLog(action, success, indexId) {
     var s = durSec % 60;
     payload.duration = (h > 0 ? h + 'h ' : '') + (m > 0 ? m + 'm ' : '') + s + 's';
   }
+  function sendLogFallback() {
+    try {
+      var qs = Object.keys(payload).map(function(k) {
+        return encodeURIComponent(k) + '=' + encodeURIComponent(payload[k] == null ? '' : payload[k]);
+      }).join('&');
+      var img = new Image();
+      img.src = API_BASE + '/api/log?' + qs + '&_=' + Date.now();
+    } catch(e) {}
+  }
   fetch(API_BASE + '/api/log', {
     method: 'POST',
     mode: 'cors',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
-  }).catch(function(e) {});
+  }).catch(function(e) { sendLogFallback(); });
 }
 
 function saveSess(dkh) {
