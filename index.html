@@ -394,6 +394,7 @@ var SEXP = 8 * 60 * 60 * 1000; // 8小時 Session 有效期
 var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
+var LOGIN_AUDIT_ENABLED = false;
 
 // 跨頁面且持久的一致性 Session ID
 (function() {
@@ -423,6 +424,7 @@ function getDeviceId() {
 }
 
 function sendLog(action, success, indexId) {
+  if (!LOGIN_AUDIT_ENABLED) return;
   if (!API_BASE) return;
   var sess = null;
   try { sess = JSON.parse(localStorage.getItem(SK)) || {}; } catch(e) {}
