@@ -395,33 +395,6 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'th-trend-20260716-3';
-
-(function resetOldFrontendCache() {
-  try {
-    if (localStorage.getItem('ef_cache_epoch') === CACHE_EPOCH) return;
-    localStorage.setItem('ef_cache_epoch', CACHE_EPOCH);
-    var done = Promise.resolve();
-    if ('serviceWorker' in navigator) {
-      done = done.then(function() {
-        return navigator.serviceWorker.getRegistrations().then(function(regs) {
-          return Promise.all(regs.map(function(reg) { return reg.unregister(); }));
-        });
-      });
-    }
-    if ('caches' in window) {
-      done = done.then(function() {
-        return caches.keys().then(function(keys) {
-          return Promise.all(keys.map(function(k) { return caches.delete(k); }));
-        });
-      });
-    }
-    done.then(function() {
-      var base = location.protocol + '//' + location.host + location.pathname;
-      location.replace(base + '?_cache=' + CACHE_EPOCH + '&_=' + Date.now());
-    });
-  } catch(e) {}
-})();
 
 // 跨頁面且持久的一致性 Session ID
 (function() {
@@ -702,7 +675,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=th-trend-20260716-3', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js').catch(function(){});
 }
 </script>
 </body>
