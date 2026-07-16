@@ -3,6 +3,7 @@ accounts.json
 accunt.txt
 config.json
 salt.bin
+openaiKEY.txt
 
 # ── MSSQL 資料備份（含真實生產設備資料）────────────────────────────────────
 *.csv
@@ -33,3 +34,12 @@ db_test.py
 # ── 內部維護文件（含安全稽核與內網資訊，禁止推送至公開 Pages）────────────────
 Readme.html
 requirements.txt
+
+# Weekly FMCS report local artifacts
+_weekly_analysis.json
+weekly_report_memory.json
+localcontext/
+weekly_report_recipients.txt
+weekly_report_mail.log
+*_FMCS_weekly*.pdf
+FMCS_weekly_standard.pdf
