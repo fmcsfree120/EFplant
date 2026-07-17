@@ -30,6 +30,7 @@ db_test.py
 *.md
 *.vbs
 *.bat
+!FRONTEND_UPDATE_SOP.md
 
 # ── 內部維護文件（含安全稽核與內網資訊，禁止推送至公開 Pages）────────────────
 Readme.html
