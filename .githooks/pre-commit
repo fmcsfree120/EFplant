@@ -11,11 +11,23 @@ if [ -z "$source_version" ] || [ -z "$staged_version" ]; then
 fi
 
 if [ "$source_version" != "$staged_version" ]; then
-  echo "[BLOCKED] Refusing stale EFplant frontend commit."
+  echo "[REPAIR] Stale EFplant frontend detected."
   echo "          generator=$source_version"
   echo "          staged=$staged_version"
-  git restore --staged --worktree -- index.html data.enc health.json service-worker.js known_equipment.json 2>/dev/null || true
-  exit 1
+  if ! ./.venv/Scripts/python.exe generate_dashboard.py; then
+    echo "[BLOCKED] Latest dashboard regeneration failed."
+    git restore --staged --worktree -- index.html data.enc health.json service-worker.js known_equipment.json 2>/dev/null || true
+    exit 1
+  fi
+  git add index.html data.enc health.json service-worker.js known_equipment.json
+  repaired_version=$(git show :index.html 2>/dev/null | sed -n "s/.*var CACHE_EPOCH = ['\"]\([^'\"]*\)['\"].*/\1/p" | head -n 1)
+  if [ "$source_version" != "$repaired_version" ]; then
+    echo "[BLOCKED] Regenerated frontend still has the wrong version."
+    git restore --staged --worktree -- index.html data.enc health.json service-worker.js known_equipment.json 2>/dev/null || true
+    exit 1
+  fi
+  echo "[OK] EFplant stale output repaired: $repaired_version"
+  staged_version=$repaired_version
 fi
 
 echo "[OK] EFplant release guard: $staged_version"

@@ -148,9 +148,11 @@ Two release guards are mandatory:
 
 - `main.py` compares the generator `CACHE_EPOCH` with the generated
   `index.html` before staging or pushing.
-- Git uses `.githooks/pre-commit` through `core.hooksPath=.githooks`. The hook
-  rejects and restores generated deployment files if the staged `index.html`
-  version differs from the generator version.
+- Git uses `.githooks/pre-commit` through `core.hooksPath=.githooks`. If the
+  staged `index.html` differs from the generator version, the hook rebuilds
+  with the latest generator, stages the repaired deployment files, and only
+  allows the commit after the versions match. If repair fails, it rejects and
+  restores the generated deployment files.
 
 Verify the repository-local hook configuration with:
 
