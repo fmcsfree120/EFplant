@@ -2,7 +2,7 @@
 // 強制 HTML 與 health.json 永遠從網路抓取，不走 PWA 快取
 // 這是解決 iOS/Android PWA 快取舊頁面問題的根本方案
 
-const SW_VER = 'efplant-sw-v28-kf1-longest-single-recovery';
+const SW_VER = 'efplant-sw-v29-kf1-mobile-recovery-table';
 
 self.addEventListener('install', function(e) {
     self.skipWaiting(); // 立即接管，不等舊 SW 結束
