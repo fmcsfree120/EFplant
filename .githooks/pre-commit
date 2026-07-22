@@ -1,0 +1,22 @@
+#!/bin/sh
+# EFplant frontend release guard: never let a stale resident process publish
+# an index.html generated from an older CACHE_EPOCH.
+
+source_version=$(sed -n "s/.*var CACHE_EPOCH = ['\"]\([^'\"]*\)['\"].*/\1/p" generate_dashboard.py | head -n 1)
+staged_version=$(git show :index.html 2>/dev/null | sed -n "s/.*var CACHE_EPOCH = ['\"]\([^'\"]*\)['\"].*/\1/p" | head -n 1)
+
+if [ -z "$source_version" ] || [ -z "$staged_version" ]; then
+  echo "[BLOCKED] EFplant frontend version could not be verified."
+  exit 1
+fi
+
+if [ "$source_version" != "$staged_version" ]; then
+  echo "[BLOCKED] Refusing stale EFplant frontend commit."
+  echo "          generator=$source_version"
+  echo "          staged=$staged_version"
+  git restore --staged --worktree -- index.html data.enc health.json service-worker.js known_equipment.json 2>/dev/null || true
+  exit 1
+fi
+
+echo "[OK] EFplant release guard: $staged_version"
+exit 0

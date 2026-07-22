@@ -136,3 +136,30 @@ Frontend update is complete only when all are true:
 - The canonical Pages URL returns the expected `CACHE_EPOCH`.
 - The canonical `service-worker.js` returns the expected `SW_VER`.
 - Any report of "still old" includes the exact URL being viewed.
+
+## Permanent Rollback Protection
+
+The half-hour updater must never retain a one-time import of the dashboard
+generator. `main.py` reloads `generate_dashboard.py` from disk for every
+dashboard rebuild, so frontend source edits take effect without restarting the
+resident scheduler.
+
+Two release guards are mandatory:
+
+- `main.py` compares the generator `CACHE_EPOCH` with the generated
+  `index.html` before staging or pushing.
+- Git uses `.githooks/pre-commit` through `core.hooksPath=.githooks`. The hook
+  rejects and restores generated deployment files if the staged `index.html`
+  version differs from the generator version.
+
+Verify the repository-local hook configuration with:
+
+```powershell
+git config --local --get core.hooksPath
+```
+
+Expected value:
+
+```text
+.githooks
+```
