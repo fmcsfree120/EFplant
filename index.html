@@ -395,7 +395,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'kf1-recovery-single-first-20260722-8';
+var CACHE_EPOCH = 'kf1-longest-single-recovery-20260722-9';
 
 (function resetOldFrontendCache() {
   try {
@@ -702,7 +702,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=kf1-recovery-single-first-20260722-8', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=kf1-longest-single-recovery-20260722-9', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
