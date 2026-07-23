@@ -197,3 +197,11 @@ trend compilation, or frontend navigation generation.
   health assessment.
 - Static plant order controls display order only and must never act as a
   filtering whitelist.
+
+### KF1 Chiller Running State
+
+- KF1 `CHU*` equipment whose source tag contains `_LOAD` uses a low-range
+  load signal and must not use the standard analog `>=10` running threshold.
+- For this specific source, absolute load `>0.1` is `RUN`; `<=0.1` is `STOP`.
+  The deadband prevents sensor zero drift from being reported as operation.
+- All other plants and equipment retain the standard running-state rules.

@@ -737,7 +737,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'kf1-kpi-weekly-20260723-18';
+var CACHE_EPOCH = 'kf1-chiller-state-20260723-19';
 
 (function resetOldFrontendCache() {
   try {
@@ -1044,7 +1044,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=kf1-kpi-weekly-20260723-18', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=kf1-chiller-state-20260723-19', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
@@ -2000,6 +2000,15 @@ def create_status_dashboard(df: pd.DataFrame, output_path: str = "index.html"):
             val = 0.0
             
         desc = str(row_data.get('DESCRIPTION', ''))
+        plant = normalize_plant_label(row_data.get('PLANT', ''))
+        eqno = str(row_data.get('EQNO', '')).strip().upper()
+        tagname = str(row_data.get('TAGNAME', '')).strip().upper()
+
+        # KF1 chiller source is a low-range load signal rather than the
+        # standard >=10 analog running signal. Keep a small deadband so sensor
+        # zero drift is not treated as running.
+        if plant == "KF1" and eqno.startswith("CHU") and "_LOAD" in tagname:
+            return val > 0.1
         
         # 1. 判斷是否為長整數（小數點後為 0 且為合理整數）
         is_int = False
