@@ -165,3 +165,17 @@ Expected value:
 ```text
 .githooks
 ```
+
+## Plant Classification Before Publishing
+
+All source rows whose `PLANT` value is `KF` must be normalized to `KF1`
+before equipment grouping, known-equipment registration, KPI calculation,
+trend compilation, or frontend navigation generation.
+
+- `KF` must never be published as a standalone plant tab.
+- Equipment status, quality trends, run-rate trends, and alarm history share
+  the canonical `KF1` label.
+- New ingestion paths must call the shared plant-label normalization before
+  grouping or deduplication.
+- Release verification must confirm that generated navigation contains `KF1`
+  and does not contain a `data-plant="KF"` button.

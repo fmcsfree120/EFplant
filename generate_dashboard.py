@@ -23,6 +23,24 @@ try:
 except Exception:
     pass
 
+
+def normalize_plant_label(value):
+    """Canonical plant label used before frontend grouping or charting.
+
+    SOP: every upstream KF row belongs to KF1.
+    """
+    plant = str(value).strip().upper()
+    return "KF1" if plant == "KF" else plant
+
+
+def normalize_plant_column(df):
+    """Return data with canonical PLANT labels before it is published."""
+    if not df.empty and "PLANT" in df.columns:
+        df = df.copy()
+        df["PLANT"] = df["PLANT"].map(normalize_plant_label)
+    return df
+
+
 def get_local_ip():
     try:
         # Create a dummy socket to resolve active subnet IP
@@ -98,6 +116,10 @@ def update_known_equipment(df_actual: pd.DataFrame, script_dir: str):
     except (FileNotFoundError, json.JSONDecodeError):
         known = {}
         is_first_run = True
+
+    legacy_kf = set(known.pop("KF", []))
+    if legacy_kf:
+        known["KF1"] = sorted(set(known.get("KF1", [])) | legacy_kf)
 
     new_eqnos = set()
 
@@ -715,7 +737,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'plant-alarm-layout-20260723-14';
+var CACHE_EPOCH = 'kf1-classify-20260723-15';
 
 (function resetOldFrontendCache() {
   try {
@@ -1022,7 +1044,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=plant-alarm-layout-20260723-14', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=kf1-classify-20260723-15', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
@@ -1309,14 +1331,14 @@ def compile_quality_data(script_dir, force_base_time=None):
     import math
     
     # Trend plants
-    PLANTS = ["T2A", "S2A", "PCB", "S2", "S3", "HJ1", "HJ2", "LC2", "LC3", "TH"]
+    PLANTS = ["T2A", "S2A", "PCB", "S2", "S3", "HJ1", "HJ2", "LC2", "LC3", "TH", "KF1"]
     
     # Load actual backup if it exists first
     df_q = pd.DataFrame()
     quality_csv = os.path.join(script_dir, "latest_quality_backup.csv")
     if os.path.exists(quality_csv):
         try:
-            df_q = pd.read_csv(quality_csv)
+            df_q = normalize_plant_column(pd.read_csv(quality_csv))
             # Ensure proper datetime parsing and force hourly ceil alignment
             df_q['TIMESTAMP'] = pd.to_datetime(df_q['TIMESTAMP']).dt.ceil('h')
             df_q['VALUE'] = pd.to_numeric(df_q['VALUE'], errors='coerce')
@@ -1331,7 +1353,7 @@ def compile_quality_data(script_dir, force_base_time=None):
     rr_csv = os.path.join(script_dir, "latest_run_rate_backup.csv")
     if os.path.exists(rr_csv):
         try:
-            df_rr = pd.read_csv(rr_csv)
+            df_rr = normalize_plant_column(pd.read_csv(rr_csv))
             df_rr['TIMESTAMP'] = pd.to_datetime(df_rr['TIMESTAMP'])
             # 註：歷史一次性 +1h 時間戳遷移（舊 floor(max_time) 格式 → 觸發整點格式）
             # 已於 2026-06-01 完成並寫入。main.py 現已直接以觸發整點寫入新資料，
@@ -1652,6 +1674,7 @@ def compile_quality_data(script_dir, force_base_time=None):
 
 
 def create_status_dashboard(df: pd.DataFrame, output_path: str = "index.html"):
+    df = normalize_plant_column(df)
     print("開始處理 Dashboard 資料...")
 
     df['TIMESTAMP'] = pd.to_datetime(df['TIMESTAMP'])
@@ -3125,7 +3148,7 @@ function switchPlant(id){{
 }}
 
 // ── ECharts Trend Logic (SPA Integration) ─────────────────────────
-const PLANTS = ["T2A", "S2A", "PCB", "S2", "S3", "HJ1", "HJ2", "LC2", "LC3", "TH"];
+const PLANTS = ["T2A", "S2A", "PCB", "S2", "S3", "HJ1", "HJ2", "LC2", "LC3", "TH", "KF1"];
 const PLANT_COLORS = {{
   "T2A": "#38bdf8",
   "S2A": "#10b981",
