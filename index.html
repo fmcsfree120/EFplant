@@ -395,7 +395,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'frontend-rollback-guard-20260722-13';
+var CACHE_EPOCH = 'plant-alarm-layout-20260723-14';
 
 (function resetOldFrontendCache() {
   try {
@@ -702,7 +702,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=frontend-rollback-guard-20260722-13', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=plant-alarm-layout-20260723-14', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
