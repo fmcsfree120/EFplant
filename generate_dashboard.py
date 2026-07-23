@@ -737,7 +737,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'kf1-classify-20260723-15';
+var CACHE_EPOCH = 'kf1-layout-20260723-16';
 
 (function resetOldFrontendCache() {
   try {
@@ -1044,7 +1044,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=kf1-classify-20260723-15', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=kf1-layout-20260723-16', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
@@ -2265,9 +2265,11 @@ def create_status_dashboard(df: pd.DataFrame, output_path: str = "index.html"):
 
             plant_html += "\n      </div>\n    </section>"
 
-        alarm_section = (build_kf1_alarm_dashboard(script_dir)
-                         if plant == "KF1"
-                         else build_alarm_pending_section(plant))
+        alarm_section = (
+            f'<div class="kf1-alarm-block">{build_kf1_alarm_dashboard(script_dir)}</div>'
+            if plant == "KF1"
+            else build_alarm_pending_section(plant)
+        )
         plant_html += f"\n  </div>\n{alarm_section}\n</div>"
 
     # KF1 has alarm analysis now; add equipment status above it automatically
@@ -2880,6 +2882,8 @@ footer{{
 .info-card.normal .info-val {{ color: #10b981; }}
 .info-card.warning .info-val {{ color: var(--amb); }}
 /* KF1 MANAGER ALARM RISK DASHBOARD */
+.kf1-alarm-block{{clear:both;margin-top:32px;padding-top:24px;border-top:1px solid var(--bd2);position:relative;z-index:0;}}
+.kf1-alarm-block::before{{content:"KF1 廠區運行風險";position:absolute;top:-9px;left:14px;padding:0 9px;background:var(--bg);color:var(--dim);font:700 .62rem var(--mono);letter-spacing:.7px;}}
 .alarm-hero{{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px;padding:14px 16px;background:linear-gradient(135deg,rgba(244,63,94,.15),rgba(30,41,59,.95));border:1px solid rgba(244,63,94,.35);border-radius:7px;}}
 .alarm-hero h2{{margin:2px 0 3px;font-size:1.25rem;color:var(--tx);}}.alarm-hero p{{margin:0;color:var(--dim);font-size:.72rem;}}
 .alarm-eyebrow{{font-family:var(--mono);font-size:.65rem;letter-spacing:1.2px;color:#fb7185;font-weight:700;}}
@@ -3160,6 +3164,7 @@ const PLANT_COLORS = {{
   "LC2": "#3b82f6",
   "LC3": "#14b8a6",
   "TH":  "#f97316",
+  "KF1": "#facc15",
   "HJ":  "#06b6d4"
 }};
 const METRIC_METADATA = {{
