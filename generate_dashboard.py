@@ -737,7 +737,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'kf1-layout-20260723-16';
+var CACHE_EPOCH = 'kf1-trend-classify-20260723-17';
 
 (function resetOldFrontendCache() {
   try {
@@ -1044,7 +1044,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=kf1-layout-20260723-16', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=kf1-trend-classify-20260723-17', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
@@ -1067,7 +1067,7 @@ if ('serviceWorker' in navigator) {
 # ══════════════════════════════════════════════════════════════════════════
 
 # 大宗化學品液位：TAGNAME 需含液位量測 token（LT/LS/LIT/WL/TANK/LEVEL）以確保是液位讀值
-_CHEM_LEVEL_TOKEN = re.compile(r'(?:LT\d|_LT\b|_LS_|_LS\b|LS_\d|LIT|_WL\b|TANK|LEVEL)')
+_CHEM_LEVEL_TOKEN = re.compile(r'(?:LT\d|_LT(?:_|\b)|_LS_|_LS(?:_|\b)|LS_\d|LIT|_WL(?:_|\b)|TANK|LEVEL)')
 # 可辨識為大宗化學品的名稱（EQNAME 正規化後比對；如需新增化學品/產品代號於此擴充）
 _CHEM_NAME = re.compile(
     r'^(H2O2|H2SO4|H3PO4|HCL|HF|HNO3|NH4OH|NA2CO3|NACLO3|NACIO3|'
@@ -1158,6 +1158,8 @@ def static_chart_key(plant, tagname, eqname, description):
     if plant == "TH" and ("_DPT" in tag or "_DP" in tag):
         if "_DPT_TOT" in tag:
             return None
+        if "WDUST" in tag or eq_upper.startswith("WDUST"):
+            return "濕式集塵靜壓"
         if "DUST" in tag or eq_upper.startswith(("DUST", "WDUST", "WDA", "A1DUST", "A2DUST")):
             return "乾式集塵靜壓"
         if "_ACE_" in tag or eq_upper.startswith(("ASCR", "ACE", "A1ASCR", "A2ASCR")):
@@ -1179,6 +1181,9 @@ def static_chart_key(plant, tagname, eqname, description):
     # 集塵優先判斷，避免設備代號 ASCRA/WDA 等與排氣類型前綴混淆。
     is_dust = "集塵" in desc or eq_upper.startswith(("DUST", "WDUST", "WDA"))
     if is_dust:
+        # Equipment code is authoritative: WDUST always means wet dust.
+        if eq_upper.startswith("WDUST") or "WDUST" in tag:
+            return "濕式集塵靜壓"
         if plant == "S2" and eq_upper in {"WDA28", "WDA37"}:
             return "濕式集塵靜壓"
         if any(word in desc for word in ("濕式", "溼式", "濕集塵", "溼集塵")):
@@ -2883,7 +2888,6 @@ footer{{
 .info-card.warning .info-val {{ color: var(--amb); }}
 /* KF1 MANAGER ALARM RISK DASHBOARD */
 .kf1-alarm-block{{clear:both;margin-top:32px;padding-top:24px;border-top:1px solid var(--bd2);position:relative;z-index:0;}}
-.kf1-alarm-block::before{{content:"KF1 廠區運行風險";position:absolute;top:-9px;left:14px;padding:0 9px;background:var(--bg);color:var(--dim);font:700 .62rem var(--mono);letter-spacing:.7px;}}
 .alarm-hero{{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px;padding:14px 16px;background:linear-gradient(135deg,rgba(244,63,94,.15),rgba(30,41,59,.95));border:1px solid rgba(244,63,94,.35);border-radius:7px;}}
 .alarm-hero h2{{margin:2px 0 3px;font-size:1.25rem;color:var(--tx);}}.alarm-hero p{{margin:0;color:var(--dim);font-size:.72rem;}}
 .alarm-eyebrow{{font-family:var(--mono);font-size:.65rem;letter-spacing:1.2px;color:#fb7185;font-weight:700;}}

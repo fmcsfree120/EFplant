@@ -179,3 +179,11 @@ trend compilation, or frontend navigation generation.
   grouping or deduplication.
 - Release verification must confirm that generated navigation contains `KF1`
   and does not contain a `data-plant="KF"` button.
+
+### Trend Classification Rules
+
+- Chemical level tags using `_LT_PV`, `_LS_PV`, or `_WL_PV` are valid level
+  measurements and must enter the bulk-chemical trend classification.
+- Equipment or tags beginning with `WDUST` are authoritative wet-dust
+  identifiers and must be classified as `濕式集塵靜壓` before any generic
+  `DUST` dry-dust rule is evaluated.
