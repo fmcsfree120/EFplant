@@ -737,7 +737,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'kf1-chiller-state-20260723-19';
+var CACHE_EPOCH = 'motor-current-state-20260723-20';
 
 (function resetOldFrontendCache() {
   try {
@@ -1044,7 +1044,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=kf1-chiller-state-20260723-19', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=motor-current-state-20260723-20', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
@@ -2009,6 +2009,18 @@ def create_status_dashboard(df: pd.DataFrame, output_path: str = "index.html"):
         # zero drift is not treated as running.
         if plant == "KF1" and eqno.startswith("CHU") and "_LOAD" in tagname:
             return val > 0.1
+
+        # Explicit motor-current signals use amperes. Evaluate this before
+        # generic integer/digital handling so exactly 1 A remains STOP.
+        is_current_signal = (
+            "電流" in desc
+            or "_VFD_A." in tagname
+            or "_VFD_A_" in tagname
+            or "_PM_I_AVG." in tagname
+            or "_PM_I_AVG_" in tagname
+        )
+        if is_current_signal:
+            return val > 1.0
         
         # 1. 判斷是否為長整數（小數點後為 0 且為合理整數）
         is_int = False

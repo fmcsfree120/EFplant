@@ -205,3 +205,12 @@ trend compilation, or frontend navigation generation.
 - For this specific source, absolute load `>0.1` is `RUN`; `<=0.1` is `STOP`.
   The deadband prevents sensor zero drift from being reported as operation.
 - All other plants and equipment retain the standard running-state rules.
+
+### Explicit Motor-Current Running State
+
+- Equipment whose description explicitly contains `電流`, or whose tag uses
+  `_VFD_A` or `_PM_I_AVG`, is treated as an ampere-based motor-current source.
+- For these explicit current signals, absolute current `>1 A` is `RUN`;
+  `<=1 A` is `STOP`.
+- This rule runs before generic integer `0/1` handling. Unconfirmed `VFD_FB`,
+  `VFD_PV`, voltage, pressure, and differential-pressure signals are excluded.
