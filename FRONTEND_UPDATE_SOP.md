@@ -187,3 +187,13 @@ trend compilation, or frontend navigation generation.
 - Equipment or tags beginning with `WDUST` are authoritative wet-dust
   identifiers and must be classified as `濕式集塵靜壓` before any generic
   `DUST` dry-dust rule is evaluated.
+
+### Weekly Report Plant Coverage
+
+- The weekly management report must canonicalize `KF` to `KF1` before any
+  grouping or scoring.
+- Its plant coverage is the union of the frontend equipment, quality, and
+  run-rate CSV files; a plant present in any source must appear in the weekly
+  health assessment.
+- Static plant order controls display order only and must never act as a
+  filtering whitelist.

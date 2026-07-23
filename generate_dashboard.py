@@ -737,7 +737,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'kf1-trend-classify-20260723-17';
+var CACHE_EPOCH = 'kf1-kpi-weekly-20260723-18';
 
 (function resetOldFrontendCache() {
   try {
@@ -1044,7 +1044,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=kf1-trend-classify-20260723-17', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=kf1-kpi-weekly-20260723-18', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
@@ -3132,7 +3132,7 @@ function switchPlant(id){{
   // Hide KPI zone wrapper when viewing trends to prevent empty padding/border line
   var kpiZone = document.querySelector('.kpi-zone');
   if(kpiZone){{
-    if(id==='TREND'||id==='KF1'){{
+    if(id==='TREND'){{
       kpiZone.style.display='none';
     }}else{{
       kpiZone.style.display='block';
