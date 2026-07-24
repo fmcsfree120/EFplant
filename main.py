@@ -463,15 +463,53 @@ def update_alarm_history():
         )
 
         if pd.notna(anchor):
-            # 從 CSV 最新時間之後補下一個 24 小時區段；每 30 分鐘執行可即時取得新增資料。
-            query = """
-            SELECT * FROM [ALM_DB].[dbo].[ALM_KF]
-            WHERE ALM_NATIVETIMELAST > %s
-              AND ALM_NATIVETIMELAST <= DATEADD(hour, 24, %s)
-            ORDER BY ALM_NATIVETIMELAST ASC
-            """
-            incoming = pd.read_sql(query, conn, params=(anchor, anchor))
-            print(f"[ALARM] 增量錨點 {anchor}，取得後續 24 小時新資料 {len(incoming)} 筆。")
+            # 以 24 小時為單位分段，但在同一次更新內持續追到 SQL 最新時間。
+            # 若只查一段，CSV 會永久落後一段，最新日期便不會出現在每日柱狀圖。
+            source_max_df = pd.read_sql(
+                "SELECT MAX(ALM_NATIVETIMELAST) AS SOURCE_MAX "
+                "FROM [ALM_DB].[dbo].[ALM_KF]",
+                conn,
+            )
+            source_max = pd.to_datetime(
+                source_max_df.iloc[0]["SOURCE_MAX"], errors="coerce")
+            chunks = []
+            cursor = pd.Timestamp(anchor)
+            max_chunks = 14
+            for chunk_no in range(1, max_chunks + 1):
+                if pd.isna(source_max) or cursor >= source_max:
+                    break
+                chunk_end = min(cursor + pd.Timedelta(hours=24), source_max)
+                query = """
+                SELECT * FROM [ALM_DB].[dbo].[ALM_KF]
+                WHERE ALM_NATIVETIMELAST > %s
+                  AND ALM_NATIVETIMELAST <= %s
+                ORDER BY ALM_NATIVETIMELAST ASC
+                """
+                chunk = pd.read_sql(query, conn, params=(cursor, chunk_end))
+                chunks.append(chunk)
+                print(
+                    f"[ALARM] 增量分段 {chunk_no}: {cursor} ~ {chunk_end}，"
+                    f"共 {len(chunk)} 筆。"
+                )
+                previous_cursor = cursor
+                cursor = pd.Timestamp(chunk_end)
+                if cursor <= previous_cursor:
+                    print("[WARN] 警報增量游標未前進，停止分段追趕。")
+                    break
+            incoming = (
+                pd.concat(chunks, ignore_index=True, sort=False)
+                if chunks else pd.DataFrame(columns=source_columns)
+            )
+            if pd.notna(source_max) and cursor < source_max:
+                print(
+                    f"[WARN] 警報增量達 {max_chunks} 段上限，"
+                    f"尚未追到來源最新時間 {source_max}。"
+                )
+            else:
+                print(
+                    f"[ALARM] 已追到來源最新時間 {source_max}，"
+                    f"本輪新增 {len(incoming)} 筆。"
+                )
         else:
             query = """
             SELECT * FROM [ALM_DB].[dbo].[ALM_KF]

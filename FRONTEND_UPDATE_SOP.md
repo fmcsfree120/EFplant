@@ -219,3 +219,14 @@ trend compilation, or frontend navigation generation.
   `<=1 A` is `STOP`.
 - This rule runs before generic integer `0/1` handling. Unconfirmed `VFD_FB`,
   `VFD_PV`, voltage, pressure, and differential-pressure signals are excluded.
+
+### Daily Alarm Trend Freshness
+
+- Alarm-history catch-up must continue through bounded 24-hour chunks in the
+  same update until reaching the source maximum; one scheduled run must not
+  stop after only one chunk.
+- The daily alarm chart always shows seven calendar days ending today.
+  A date with no alarm records is displayed as a zero-height bar rather than
+  being omitted.
+- Source freshness remains visible so a zero-event day is not silently treated
+  as proof that the alarm feed is healthy.
