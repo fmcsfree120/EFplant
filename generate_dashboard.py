@@ -737,7 +737,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'motor-current-state-20260723-20';
+var CACHE_EPOCH = 'risk-cycle-top-scroll-20260724-21';
 
 (function resetOldFrontendCache() {
   try {
@@ -1044,7 +1044,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=motor-current-state-20260723-20', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=risk-cycle-top-scroll-20260724-21', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
@@ -2569,10 +2569,10 @@ header{{
   white-space:nowrap;transition:all .15s;
 }}
 .chart-link:hover{{color:var(--tx);border-color:var(--tx);}}
-/* KPI ZONE - fixed, never scrolls */
+/* KPI ZONE - part of the page content; scrolls away with the equipment list */
 .kpi-zone{{
-  flex-shrink:0;
-  padding:8px 12px;
+  padding:0 0 8px;
+  margin-bottom:10px;
   border-bottom:1px solid var(--bd);
   background:var(--bg);
 }}
@@ -2965,12 +2965,12 @@ footer{{
   </div>
 </header>
 {nav_bar_html}
-{kpi_zone_html}
 <div class="refresh-banner" id="refresh-banner">
   &#x1F504; 新資料已就緒，<span id="refresh-count">5</span> 秒後自動重新整理 &nbsp;
   <button class="refresh-btn" onclick="doRefreshNow()">立即重整</button>
 </div>
 <div class="scroll-area">
+{kpi_zone_html}
 {plant_html}
   <footer>
     EFplant FMCS Smart Plant Integration &copy; 2026<br>
@@ -4037,16 +4037,16 @@ window.addEventListener('DOMContentLoaded',function(){{
   else if(fid)switchPlant(fid);
 }});
 
-// ── TOP 按鈕（大宗化學品 / 排氣靜壓 等多子圖分頁專用）─────────────────
+// ── TOP 按鈕：所有頁面採用相同的顯示標準 ─────────────────────────────
 // body/html 為 overflow:hidden，滾動發生在 .scroll-area 內，
 // 必須監聽 .scroll-area 的 scroll 事件，並讀取 scrollTop 而非 window.scrollY
+const TOP_BUTTON_SCROLL_THRESHOLD = 300;
 function _syncTopBtn() {{
   var btn = document.getElementById('top-btn');
   if (!btn) return;
   var sa = document.querySelector('.scroll-area');
   var st = sa ? sa.scrollTop : window.scrollY;
-  var multiTab = (['大宗化學品','排氣靜壓','供應水質','廢水處理'].indexOf(currentMetric) !== -1);
-  if (multiTab && st > 220) {{
+  if (st > TOP_BUTTON_SCROLL_THRESHOLD) {{
     btn.classList.add('visible');
   }} else {{
     btn.classList.remove('visible');

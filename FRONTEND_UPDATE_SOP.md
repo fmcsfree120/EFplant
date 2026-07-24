@@ -34,6 +34,11 @@ A second structural issue is that `.gitignore` ignores `*.py`, so source fixes i
 
 ## Standard Update Procedure
 
+Every completed frontend source modification must run this procedure
+immediately. Do not leave a completed change only in source code or local
+generated files: regenerate, verify, commit, push, and verify the canonical
+Pages URL before reporting completion.
+
 1. Confirm the intended frontend URL before doing any cache work.
 
 ```powershell
