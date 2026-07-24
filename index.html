@@ -395,7 +395,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'alarm-daily-live-7d-20260724-24';
+var CACHE_EPOCH = 'alarm-heatmap-copy-20260724-25';
 
 (function resetOldFrontendCache() {
   try {
@@ -702,7 +702,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=alarm-daily-live-7d-20260724-24', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=alarm-heatmap-copy-20260724-25', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>

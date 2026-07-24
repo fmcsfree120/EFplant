@@ -313,7 +313,7 @@ def build_kf1_alarm_dashboard(script_dir: str) -> str:
   <div class="alarm-grid alarm-grid-primary">
     <section class="alarm-panel"><div class="alarm-panel-title"><span>每日警報趨勢</span><small>柱高＝全部事件；滑鼠移入或手機點擊可看明細</small></div>
       <div class="alarm-daily">{''.join(daily_bars)}</div></section>
-    <section class="alarm-panel"><div class="alarm-panel-title"><span>24 小時風險熱區</span><small>顏色越深；滑鼠移入或手機點擊可看明細</small></div>
+    <section class="alarm-panel"><div class="alarm-panel-title"><span>24 小時風險熱區</span><small>滑鼠移入或手機點擊可看明細</small></div>
       <div class="alarm-hours">{''.join(hour_cells)}</div></section>
   </div>
   <div class="alarm-grid">
@@ -741,7 +741,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'alarm-daily-live-7d-20260724-24';
+var CACHE_EPOCH = 'alarm-heatmap-copy-20260724-25';
 
 (function resetOldFrontendCache() {
   try {
@@ -1048,7 +1048,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=alarm-daily-live-7d-20260724-24', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=alarm-heatmap-copy-20260724-25', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
