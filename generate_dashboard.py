@@ -193,10 +193,7 @@ def build_kf1_alarm_dashboard(script_dir: str) -> str:
         overall_risk = float(tag_risk.clip(upper=100).mean()) if len(tag_risk) else 0.0
         risk_class = "high" if overall_risk >= 60 else ("medium" if overall_risk >= 30 else "low")
 
-        # Always display seven calendar days ending today. A day with no alarm
-        # events must still have a zero-height bar instead of disappearing.
-        display_end = max(max_time.normalize(), pd.Timestamp.now().normalize())
-        expected_days = pd.date_range(display_end - pd.Timedelta(days=6), display_end, freq="D")
+        expected_days = pd.date_range(min_time.normalize(), max_time.normalize(), freq="D")
         actual_days = set(alarms["TIME"].dt.normalize().unique())
         missing_days = [d.strftime("%m/%d") for d in expected_days if d.to_datetime64() not in actual_days]
         coverage = ((len(expected_days) - len(missing_days)) / len(expected_days) * 100) if len(expected_days) else 0
@@ -214,16 +211,13 @@ def build_kf1_alarm_dashboard(script_dir: str) -> str:
                     .sort_values(["RISK", "EVENTS"], ascending=False)
                     .head(10))
 
-        # 每日警報趨勢固定顯示含今天在內的七個日曆日；無事件日期補 0。
-        daily = (alarms.assign(DAY=alarms["TIME"].dt.normalize())
-                       .groupby("DAY", sort=True)
+        # 每日警報趨勢維持七日直條顯示，並納入每 30 分鐘同步的當日最新資料。
+        daily = (alarms.assign(DAY=alarms["TIME"].dt.strftime("%m/%d"))
+                       .groupby("DAY", sort=False)
                        .agg(TOTAL=("TIME", "size"),
                             ABNORMAL=("ALM_ALMSTATUS", lambda s: int((s != "OK").sum())),
                             CRITICAL=("ALM_ALMPRIORITY", lambda s: int((s == "CRITICAL").sum())))
-                       .reindex(expected_days, fill_value=0)
-                       .rename_axis("DAY")
                        .reset_index())
-        daily["DAY"] = daily["DAY"].dt.strftime("%m/%d")
         hourly = (alarms.assign(HOUR=alarms["TIME"].dt.hour)
                         .groupby("HOUR").size().reindex(range(24), fill_value=0))
 
@@ -747,7 +741,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'alarm-daily-current-20260725-26';
+var CACHE_EPOCH = 'alarm-heatmap-copy-20260724-25';
 
 (function resetOldFrontendCache() {
   try {
@@ -1054,7 +1048,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=alarm-daily-current-20260725-26', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=alarm-heatmap-copy-20260724-25', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
