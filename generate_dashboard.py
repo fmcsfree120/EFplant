@@ -211,8 +211,8 @@ def build_kf1_alarm_dashboard(script_dir: str) -> str:
                     .sort_values(["RISK", "EVENTS"], ascending=False)
                     .head(10))
 
-        # 每日警報趨勢沿用既有直條式模板，只將計算視窗與 TOP 10 統一為最近 24 小時。
-        daily = (top10_alarms.assign(DAY=top10_alarms["TIME"].dt.strftime("%m/%d"))
+        # 每日警報趨勢維持七日直條顯示，並納入每 30 分鐘同步的當日最新資料。
+        daily = (alarms.assign(DAY=alarms["TIME"].dt.strftime("%m/%d"))
                        .groupby("DAY", sort=False)
                        .agg(TOTAL=("TIME", "size"),
                             ABNORMAL=("ALM_ALMSTATUS", lambda s: int((s != "OK").sum())),
@@ -741,7 +741,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'alarm-daily-top10-24h-20260724-23';
+var CACHE_EPOCH = 'alarm-daily-live-7d-20260724-24';
 
 (function resetOldFrontendCache() {
   try {
@@ -1048,7 +1048,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=alarm-daily-top10-24h-20260724-23', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=alarm-daily-live-7d-20260724-24', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
