@@ -395,7 +395,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'risk-cycle-top-scroll-20260724-21';
+var CACHE_EPOCH = 'alarm-top10-24h-20260724-22';
 
 (function resetOldFrontendCache() {
   try {
@@ -702,7 +702,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=risk-cycle-top-scroll-20260724-21', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=alarm-top10-24h-20260724-22', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>

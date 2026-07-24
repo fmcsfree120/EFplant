@@ -182,6 +182,8 @@ def build_kf1_alarm_dashboard(script_dir: str) -> str:
         total_count = int(len(abnormal))
         max_time = alarms["TIME"].max()
         min_time = alarms["TIME"].min()
+        top10_cutoff = max_time - pd.Timedelta(hours=24)
+        top10_alarms = alarms[alarms["TIME"] >= top10_cutoff].copy()
 
         # 整體風險＝各 Tag 最新狀態風險分數的平均值。
         # OK=0、CFN=30、LO/HI=60、LOLO/HIHI=90；CRITICAL 再加 10，單 Tag 上限 100。
@@ -197,7 +199,8 @@ def build_kf1_alarm_dashboard(script_dir: str) -> str:
         coverage = ((len(expected_days) - len(missing_days)) / len(expected_days) * 100) if len(expected_days) else 0
 
         status_weights = {"HIHI": 5, "LOLO": 5, "HI": 3, "LO": 3, "CFN": 2, "OK": 0}
-        work = alarms.copy()
+        # 兩個 TOP 10 僅統計資料最新時間往前 24 小時；其他總覽維持完整保留範圍。
+        work = top10_alarms.copy()
         work["RISK_POINTS"] = work["ALM_ALMSTATUS"].map(status_weights).fillna(1)
         work.loc[work["ALM_ALMPRIORITY"] == "CRITICAL", "RISK_POINTS"] += 4
         risk = (work.groupby(["ALM_TAGNAME", "ALM_DESCR"], as_index=False)
@@ -249,7 +252,7 @@ def build_kf1_alarm_dashboard(script_dir: str) -> str:
             )
 
         # OK 紀錄同時帶有警報進入與最後復歸時間，可直接計算實際復歸耗時。
-        recovered = alarms[alarms["ALM_ALMSTATUS"] == "OK"].copy()
+        recovered = top10_alarms[top10_alarms["ALM_ALMSTATUS"] == "OK"].copy()
         recovered["START_TIME"] = pd.to_datetime(
             recovered["ALM_DATEIN"].astype(str).str.strip() + " " + recovered["ALM_TIMEIN"].astype(str).str.strip(),
             format="mixed", errors="coerce")
@@ -258,7 +261,7 @@ def build_kf1_alarm_dashboard(script_dir: str) -> str:
             format="mixed", errors="coerce")
         recovered["RECOVERY_SECONDS"] = (recovered["RECOVERY_TIME"] - recovered["START_TIME"]).dt.total_seconds()
 
-        # 每個 Tag 只取七天內最長的一次「進入→OK」，依該次實際耗時排名。
+        # 每個 Tag 只取最近 24 小時內最長的一次「進入→OK」，依該次實際耗時排名。
         recovered = recovered[
             recovered["START_TIME"].notna()
             & recovered["RECOVERY_TIME"].notna()
@@ -282,12 +285,12 @@ def build_kf1_alarm_dashboard(script_dir: str) -> str:
         for rank, (_, row) in enumerate(recovered.iterrows(), start=1):
             recovery_rows.append(f"""
           <tr><td><span class="alarm-rank">{rank}</span></td>
-          <td><b>{html.escape(row['ALM_DESCR'] or row['ALM_TAGNAME'])}</b><small>{html.escape(row['ALM_TAGNAME'])} · 本週復歸 {int(row['SEGMENTS'])} 次</small></td>
+          <td><b>{html.escape(row['ALM_DESCR'] or row['ALM_TAGNAME'])}</b><small>{html.escape(row['ALM_TAGNAME'])} · 24小時復歸 {int(row['SEGMENTS'])} 次</small></td>
           <td class="alarm-time"><span>{row['START_TIME'].strftime('%m/%d')}</span><span>{row['START_TIME'].strftime('%H:%M:%S')}</span></td>
           <td class="alarm-time"><span>{row['RECOVERY_TIME'].strftime('%m/%d')}</span><span>{row['RECOVERY_TIME'].strftime('%H:%M:%S')}</span></td>
           <td class="alarm-duration">{format_recovery_duration(row['RECOVERY_SECONDS'])}</td></tr>""")
         if not recovery_rows:
-            recovery_rows.append('<tr><td colspan="5" class="alarm-all-clear">無超過30分鐘未復歸記錄</td></tr>')
+            recovery_rows.append('<tr><td colspan="5" class="alarm-all-clear">最近24小時無超過30分鐘未復歸記錄</td></tr>')
 
         missing_text = "、".join(missing_days) if missing_days else "無"
         freshness_hours = max(0.0, (datetime.now() - max_time.to_pydatetime()).total_seconds() / 3600)
@@ -313,8 +316,8 @@ def build_kf1_alarm_dashboard(script_dir: str) -> str:
       <div class="alarm-hours">{''.join(hour_cells)}</div></section>
   </div>
   <div class="alarm-grid">
-    <section class="alarm-panel"><div class="alarm-panel-title"><span>TOP 10 高風險設備</span><small>警報越嚴重、同一設備發生次數越多，排名越前面</small></div>{''.join(risk_rows)}</section>
-    <section class="alarm-panel"><div class="alarm-panel-title"><span>TOP 10 警報復歸耗時</span><small>從警報發生到恢復正常所花的時間，時間越長排名越前面</small></div>
+    <section class="alarm-panel"><div class="alarm-panel-title"><span>TOP 10 高風險設備</span><small>最近24小時；警報越嚴重、同一設備發生次數越多，排名越前面</small></div>{''.join(risk_rows)}</section>
+    <section class="alarm-panel"><div class="alarm-panel-title"><span>TOP 10 警報復歸耗時</span><small>最近24小時；從警報發生到恢復正常所花的時間，時間越長排名越前面</small></div>
       <div class="alarm-table-wrap"><table class="alarm-table"><thead><tr><th>#</th><th>設備／訊息</th><th>警報發生</th><th>復歸時間</th><th>最長單次耗時</th></tr></thead><tbody>{''.join(recovery_rows)}</tbody></table></div></section>
   </div>
   <section class="alarm-data-health">
@@ -737,7 +740,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'risk-cycle-top-scroll-20260724-21';
+var CACHE_EPOCH = 'alarm-top10-24h-20260724-22';
 
 (function resetOldFrontendCache() {
   try {
@@ -1044,7 +1047,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=risk-cycle-top-scroll-20260724-21', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=alarm-top10-24h-20260724-22', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
