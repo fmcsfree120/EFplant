@@ -741,7 +741,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'alarm-heatmap-copy-20260724-25';
+var CACHE_EPOCH = 'alarm-recovery-no-scroll-20260728-1';
 
 (function resetOldFrontendCache() {
   try {
@@ -1048,7 +1048,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=alarm-heatmap-copy-20260724-25', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=alarm-recovery-no-scroll-20260728-1', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
@@ -2941,7 +2941,7 @@ footer{{
 .alarm-touch-tip.show{{opacity:1;transform:translateY(0);}}
 .alarm-risk-row{{margin-bottom:10px;}}.alarm-risk-head{{display:flex;justify-content:space-between;gap:8px;font-size:.68rem;}}.alarm-risk-head span{{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}}.alarm-risk-head b{{font-family:var(--mono);color:#fb7185;white-space:nowrap;}}
 .alarm-risk-tag{{font:.56rem var(--mono);color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin:3px 0;}}.alarm-bar{{height:5px;background:#0f172a;border-radius:5px;overflow:hidden;}}.alarm-bar i{{height:100%;display:block;background:linear-gradient(90deg,#f59e0b,#f43f5e);}}
-.alarm-table-wrap{{overflow:auto;max-height:410px;}}.alarm-table{{width:100%;border-collapse:collapse;font-size:.64rem;}}.alarm-table th{{position:sticky;top:0;background:var(--sf);text-align:left;color:var(--dim);padding:6px;border-bottom:1px solid var(--bd);white-space:nowrap;}}
+.alarm-table-wrap{{overflow-x:auto;overflow-y:visible;max-height:none;}}.alarm-table{{width:100%;border-collapse:collapse;font-size:.64rem;}}.alarm-table th{{position:static;background:var(--sf);text-align:left;color:var(--dim);padding:6px;border-bottom:1px solid var(--bd);white-space:nowrap;}}
 .alarm-table td{{padding:7px 6px;border-bottom:1px solid var(--bd);vertical-align:top;white-space:nowrap;}}.alarm-table td:nth-child(2){{white-space:normal;min-width:150px;}}.alarm-table td small{{display:block;margin-top:2px;font:500 .54rem var(--mono);color:var(--dim);word-break:break-all;}}
 .alarm-time span{{display:block;line-height:1.35;}}
 .alarm-rank{{display:inline-flex;width:22px;height:22px;align-items:center;justify-content:center;border-radius:50%;background:rgba(244,63,94,.15);border:1px solid rgba(244,63,94,.4);color:#fb7185;font:800 .65rem var(--mono);}}.alarm-duration{{color:#fb7185;font-weight:800;font-family:var(--mono);}}
