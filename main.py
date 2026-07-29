@@ -574,6 +574,25 @@ def fetch_data_and_update():
                     df_quality['PLANT'].astype(str).str.strip().str.upper()
                     .replace({'KF': 'KF1'})
                 )
+
+            # KF1 兩只廠區總功率表的歷史資料原為 kW，來源於 2026-07-28
+            # 09:00 起改為 MW。每次會重抓完整七日資料，因此必須在寫入 CSV
+            # 前正規化仍為 kW 的舊值，避免人工校正被下一輪同步覆蓋。
+            kf1_power_tags = {
+                'KFHVAC.KF_PW_2F_MGCB1_KW.F_CV',
+                'KFHVAC.KF_PW_2F_MGCB2_KW.F_CV',
+            }
+            quality_values = pd.to_numeric(df_quality['VALUE'], errors='coerce')
+            kf1_power_kw_mask = (
+                df_quality['TAGNAME'].astype(str).str.strip().isin(kf1_power_tags)
+                & quality_values.abs().ge(1000)
+            )
+            converted_count = int(kf1_power_kw_mask.sum())
+            if converted_count:
+                df_quality.loc[kf1_power_kw_mask, 'VALUE'] = (
+                    quality_values.loc[kf1_power_kw_mask] / 1000
+                )
+                print(f"[NORMALIZE] KF1 廠區用電 kW→MW：{converted_count} 筆。")
             print(f"[OK] 取得品質數據 {len(df_quality)} 筆。")
             
             # ── 資料存儲生命週期管理 (品質/能效趨勢數據) ─────────────────────
