@@ -148,14 +148,49 @@ def update_known_equipment(df_actual: pd.DataFrame, script_dir: str):
     return new_eqnos
 
 
-def build_kf1_alarm_dashboard(script_dir: str) -> str:
-    """Build the KF1 alarm-risk section (without the surrounding plant container)."""
-    alarm_path = os.path.join(script_dir, "latest_alarm_history_backup.csv")
+CONNECTED_ALARM_PLANTS = {
+    "KF1", "HF", "HJ1", "HJ2", "LC2", "LC3",
+    "PCB", "S2", "S2A", "S3", "T2A",
+}
+
+
+def refresh_other_alarm_history_if_stale(script_dir: str, max_age_seconds: int = 600) -> None:
+    """Hot-reload bridge for a resident pre-multi-plant main.py process."""
+    import importlib.util
+    import time
+
+    alarm_path = os.path.join(script_dir, "latest_alarm_history_other_backup.csv")
+    if os.path.exists(alarm_path):
+        age_seconds = time.time() - os.path.getmtime(alarm_path)
+        if age_seconds <= max_age_seconds:
+            return
+
+    main_path = os.path.join(script_dir, "main.py")
+    try:
+        spec = importlib.util.spec_from_file_location("_efplant_alarm_hot_updater", main_path)
+        if spec is None or spec.loader is None:
+            raise RuntimeError("無法載入 main.py")
+        updater = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(updater)
+        if not updater.update_other_alarm_history():
+            raise RuntimeError("其他廠區警報同步回報失敗")
+    except Exception as exc:
+        print(f"[WARN] 其他廠區警報熱更新失敗，沿用既有 CSV: {exc}")
+
+
+def build_kf1_alarm_dashboard(script_dir: str, plant: str = "KF1") -> str:
+    """Build one plant's alarm-risk section; KF1 keeps its original dedicated CSV."""
+    alarm_path = os.path.join(
+        script_dir,
+        "latest_alarm_history_backup.csv"
+        if plant == "KF1"
+        else "latest_alarm_history_other_backup.csv"
+    )
     if not os.path.exists(alarm_path):
-        return """
+        return f"""
   <div class="alarm-empty">
-    <div class="alarm-empty-title">KF1 警報風險資料尚未建立</div>
-    <div>請先執行 fetch_alarm_history.py 匯出 ALM_DB.dbo.ALM_KF 最近 7 天資料。</div>
+    <div class="alarm-empty-title">{html.escape(plant)} 警報風險資料尚未建立</div>
+    <div>最近 7 天警報資料尚未同步。</div>
   </div>"""
 
     try:
@@ -167,6 +202,14 @@ def build_kf1_alarm_dashboard(script_dir: str) -> str:
         missing = sorted(required - set(alarms.columns))
         if missing:
             raise ValueError("缺少欄位：" + ", ".join(missing))
+        if plant != "KF1":
+            if "PLANT" not in alarms.columns:
+                raise ValueError("缺少欄位：PLANT")
+            alarms = alarms[
+                alarms["PLANT"].astype(str).str.strip().str.upper() == plant
+            ].copy()
+            if alarms.empty:
+                raise ValueError(f"{plant} 尚無警報資料")
 
         alarms["TIME"] = pd.to_datetime(alarms["ALM_NATIVETIMELAST"], errors="coerce")
         for col in ("ALM_TAGNAME", "ALM_DESCR", "ALM_ALMSTATUS", "ALM_ALMPRIORITY"):
@@ -300,7 +343,7 @@ def build_kf1_alarm_dashboard(script_dir: str) -> str:
 
         return f"""
   <section class="alarm-hero">
-    <div><div class="alarm-eyebrow">KF1 · iFIX ALARM RISK</div><h2>廠區運行風險總覽</h2>
+    <div><div class="alarm-eyebrow">{html.escape(plant)} · iFIX ALARM RISK</div><h2>廠區運行風險總覽</h2>
       <p>{min_time.strftime('%Y/%m/%d %H:%M')} – {max_time.strftime('%Y/%m/%d %H:%M')} · 最近 7 日警報事件</p></div>
     <div class="alarm-freshness {freshness_class}"><span>資料最後更新</span><b>{freshness_hours:.1f} 小時前</b></div>
   </section>
@@ -326,9 +369,9 @@ def build_kf1_alarm_dashboard(script_dir: str) -> str:
     <p>注意：缺資料不可解讀為零警報。{critical_note}</p>
   </section>"""
     except Exception as exc:
-        print(f"[WARN] KF1 警報儀表板建立失敗: {exc}")
+        print(f"[WARN] {plant} 警報儀表板建立失敗: {exc}")
         return f"""
-  <div class="alarm-empty"><div class="alarm-empty-title">KF1 警報資料讀取失敗</div><div>{html.escape(str(exc))}</div></div>"""
+  <div class="alarm-empty"><div class="alarm-empty-title">{html.escape(plant)} 警報資料讀取失敗</div><div>{html.escape(str(exc))}</div></div>"""
 
 
 def build_alarm_pending_section(plant: str) -> str:
@@ -741,7 +784,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'alarm-recovery-no-scroll-20260728-1';
+var CACHE_EPOCH = 'multi-plant-alarm-hf-20260729-1';
 
 (function resetOldFrontendCache() {
   try {
@@ -1048,7 +1091,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=alarm-recovery-no-scroll-20260728-1', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=multi-plant-alarm-hf-20260729-1', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
@@ -1732,7 +1775,7 @@ def create_status_dashboard(df: pd.DataFrame, output_path: str = "index.html"):
     all_plants = sorted(df_unique['PLANT'].unique())
     print(f"偵測廠區: {all_plants}")
 
-    REQUIRED_PLANTS = ["T2A", "S2A", "PCB", "S2", "S3", "HJ1", "HJ2", "LC2", "LC3", "TH"]
+    REQUIRED_PLANTS = ["T2A", "S2A", "PCB", "S2", "S3", "HJ1", "HJ2", "LC2", "LC3", "TH", "HF"]
     display_plants  = list(REQUIRED_PLANTS)
     for p in all_plants:
         if p not in display_plants:
@@ -1766,6 +1809,7 @@ def create_status_dashboard(df: pd.DataFrame, output_path: str = "index.html"):
     generation_time_iso = now_dt.strftime('%Y-%m-%dT%H:%M:%S')
 
     script_dir = os.path.dirname(os.path.abspath(__file__)) or "."
+    refresh_other_alarm_history_if_stale(script_dir)
     new_eqnos  = update_known_equipment(df_unique, script_dir)
 
     # ── 載入 EQ_Mapping.csv 並建立動態分類器 ────────────────────────────────────
@@ -2208,7 +2252,11 @@ def create_status_dashboard(df: pd.DataFrame, output_path: str = "index.html"):
     <div class="wip-title">施工中 / Under Construction</div>
     <div class="wip-msg">此廠區數據尚未接入系統<br>待 MSSQL 資料接通後將自動上線</div>
   </div>
-  {build_alarm_pending_section(plant)}
+  <div class="kf1-alarm-block">{
+      build_kf1_alarm_dashboard(script_dir, plant)
+      if plant in CONNECTED_ALARM_PLANTS
+      else build_alarm_pending_section(plant)
+  }</div>
 </div>"""
             continue
 
@@ -2316,11 +2364,12 @@ def create_status_dashboard(df: pd.DataFrame, output_path: str = "index.html"):
 
             plant_html += "\n      </div>\n    </section>"
 
-        alarm_section = (
-            f'<div class="kf1-alarm-block">{build_kf1_alarm_dashboard(script_dir)}</div>'
-            if plant == "KF1"
+        alarm_body = (
+            build_kf1_alarm_dashboard(script_dir, plant)
+            if plant in CONNECTED_ALARM_PLANTS
             else build_alarm_pending_section(plant)
         )
+        alarm_section = f'<div class="kf1-alarm-block">{alarm_body}</div>'
         plant_html += f"\n  </div>\n{alarm_section}\n</div>"
 
     # KF1 has alarm analysis now; add equipment status above it automatically
@@ -3992,7 +4041,7 @@ window.addEventListener('resize', function() {{
   chemChartInstances.forEach(function(c) {{ c.resize(); }});
 }});
 
-// ── KF1 共用 Tooltip：桌機 hover、手機 touch/click、鍵盤 focus ──────────────
+// ── 警報總覽共用 Tooltip：桌機 hover、手機 touch/click、鍵盤 focus ─────────
 var alarmTipTimer = null;
 var alarmTipPinned = false;
 function initAlarmTooltips() {{
@@ -4031,7 +4080,7 @@ function initAlarmTooltips() {{
     if (pinned) alarmTipTimer = setTimeout(function(){{ hideAlarmTip(true); }}, 3500);
   }}
 
-  document.querySelectorAll('#pc-KF1 [data-alarm-tip]').forEach(function(el) {{
+  document.querySelectorAll('.plant-container [data-alarm-tip]').forEach(function(el) {{
     el.addEventListener('mouseenter', function(){{ showAlarmTip(el, false); }});
     el.addEventListener('mouseleave', function(){{ hideAlarmTip(false); }});
     el.addEventListener('focus', function(){{ showAlarmTip(el, false); }});

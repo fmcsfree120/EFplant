@@ -525,6 +525,126 @@ def update_alarm_history():
             conn.close()
 
 
+OTHER_ALARM_TABLES = {
+    'HF': 'ALM_HF',
+    'HJ1': 'ALM_HJ1',
+    'HJ2': 'ALM_HJ2',
+    'LC2': 'ALM_LC2',
+    'LC3': 'ALM_LC3',
+    'PCB': 'ALM_PCB',
+    'S2': 'ALM_S2',
+    'S2A': 'ALM_S2A',
+    'S3': 'ALM_S3',
+    'T2A': 'ALM_T2A',
+}
+
+
+def update_other_alarm_history():
+    """更新 KF1 以外廠區的警報 CSV；KF1 原有管線與檔案維持不變。"""
+    alarm_path = os.path.join(SCRIPT_DIR, "latest_alarm_history_other_backup.csv")
+    temp_path = alarm_path + ".tmp"
+    source_columns = [
+        'ALM_NATIVETIMELAST', 'ALM_TAGNAME', 'ALM_VALUE', 'ALM_DESCR',
+        'ALM_ALMSTATUS', 'ALM_ALMPRIORITY', 'ALM_DATEIN', 'ALM_TIMEIN',
+        'ALM_DATELAST', 'ALM_TIMELAST'
+    ]
+    text_columns = [c for c in source_columns if c != 'ALM_NATIVETIMELAST']
+    conn = None
+    try:
+        existing = pd.DataFrame()
+        if os.path.exists(alarm_path):
+            existing = pd.read_csv(alarm_path, encoding='utf-8-sig')
+            if 'ALM_NATIVETIMELAST' in existing.columns:
+                existing['ALM_NATIVETIMELAST'] = pd.to_datetime(
+                    existing['ALM_NATIVETIMELAST'], errors='coerce')
+
+        cfg = load_config()['mssql']
+        conn = pymssql.connect(
+            cfg['server'], cfg['user'], cfg['password'],
+            cfg['database'], charset=cfg.get('charset', 'cp950')
+        )
+
+        incoming_frames = []
+        for plant, table in OTHER_ALARM_TABLES.items():
+            anchor = None
+            if not existing.empty and 'PLANT' in existing.columns:
+                plant_times = existing.loc[
+                    existing['PLANT'].astype(str).str.upper() == plant,
+                    'ALM_NATIVETIMELAST'
+                ]
+                if not plant_times.empty:
+                    anchor = plant_times.max()
+
+            if pd.notna(anchor):
+                query = f"""
+                SELECT * FROM [ALM_DB].[dbo].[{table}]
+                WHERE ALM_NATIVETIMELAST > %s
+                  AND ALM_NATIVETIMELAST <= DATEADD(hour, 24, %s)
+                ORDER BY ALM_NATIVETIMELAST ASC
+                """
+                incoming = pd.read_sql(query, conn, params=(anchor, anchor))
+                print(f"[ALARM:{plant}] 增量錨點 {anchor}，取得 {len(incoming)} 筆。")
+            else:
+                query = f"""
+                SELECT * FROM [ALM_DB].[dbo].[{table}]
+                WHERE ALM_NATIVETIMELAST >= DATEADD(day, -7, (
+                    SELECT MAX(ALM_NATIVETIMELAST) FROM [ALM_DB].[dbo].[{table}]
+                ))
+                ORDER BY ALM_NATIVETIMELAST ASC
+                """
+                incoming = pd.read_sql(query, conn)
+                print(f"[ALARM:{plant}] 首次回抓最近 7 日，共 {len(incoming)} 筆。")
+
+            if not incoming.empty:
+                incoming.insert(0, 'PLANT', plant)
+                incoming_frames.append(incoming)
+
+        frames = [existing] if not existing.empty else []
+        frames.extend(incoming_frames)
+        if not frames:
+            print("[ALARM] 其他廠區沒有可寫入的警報資料。")
+            return True
+
+        combined = pd.concat(frames, ignore_index=True, sort=False)
+        combined['PLANT'] = combined['PLANT'].astype(str).str.strip().str.upper()
+        combined['ALM_NATIVETIMELAST'] = pd.to_datetime(
+            combined['ALM_NATIVETIMELAST'], errors='coerce')
+        combined = combined.dropna(subset=['PLANT', 'ALM_NATIVETIMELAST'])
+        for col in text_columns:
+            if col in combined.columns:
+                combined[col] = combined[col].fillna('').astype(str).str.strip()
+
+        dedup_columns = ['PLANT'] + [c for c in source_columns if c in combined.columns]
+        combined = combined.drop_duplicates(subset=dedup_columns, keep='last')
+        latest_per_plant = combined.groupby('PLANT')['ALM_NATIVETIMELAST'].transform('max')
+        combined = combined[
+            combined['ALM_NATIVETIMELAST'] >= latest_per_plant - pd.Timedelta(days=7)
+        ].sort_values(['PLANT', 'ALM_NATIVETIMELAST'])
+
+        ordered = ['PLANT'] + [c for c in source_columns if c in combined.columns]
+        remaining = [c for c in combined.columns if c not in ordered]
+        combined = combined[ordered + remaining]
+        combined.to_csv(
+            temp_path, index=False, encoding='utf-8-sig',
+            date_format='%Y-%m-%d %H:%M:%S.%f'
+        )
+        os.replace(temp_path, alarm_path)
+        counts = combined.groupby('PLANT').size().to_dict()
+        print(f"[OK] 其他廠區警報 CSV 已更新：{counts}")
+        return True
+    except Exception as alarm_err:
+        print(f"[WARN] 其他廠區警報更新失敗，沿用既有 CSV: {alarm_err}")
+        try:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+        except Exception:
+            pass
+        return False
+    finally:
+        if conn is not None:
+            conn.close()
+
+
 def fetch_data_and_update():
     now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     # 以發動抓取 SQL 的當下整點為統一時間基準
@@ -542,6 +662,7 @@ def fetch_data_and_update():
     # Step 2：風險總覽與設備狀態共用同一個 30 分鐘更新／發布週期。
     # 警報來源失敗時 update_alarm_history() 會保留既有 CSV，設備更新仍可繼續。
     update_alarm_history()
+    update_other_alarm_history()
 
     try:
         # Step 3：連線 MSSQL 抓取最新資料

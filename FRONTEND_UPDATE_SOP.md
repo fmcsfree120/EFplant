@@ -203,6 +203,22 @@ trend compilation, or frontend navigation generation.
 - Static plant order controls display order only and must never act as a
   filtering whitelist.
 
+### Alarm Risk Plant Isolation
+
+- KF1 keeps its established `ALM_KF` ingestion path and dedicated
+  `latest_alarm_history_backup.csv`; other plants must never be relabeled or
+  merged into that file.
+- HF, HJ1, HJ2, LC2, LC3, PCB, S2, S2A, S3, and T2A use their matching
+  `ALM_DB.dbo.ALM_*` tables and the separate
+  `latest_alarm_history_other_backup.csv`.
+- Every plant uses the same alarm-risk calculations and presentation, but the
+  source frame must be filtered by `PLANT` before aggregation.
+- Plants without a connected alarm table retain the standard pending section;
+  missing source coverage must not be interpreted as zero alarms.
+- HF remains a required equipment navigation tab. Until equipment status is
+  available, its equipment section uses the standard construction placeholder
+  while its connected alarm-risk section remains visible below it.
+
 ### KF1 Chiller Running State
 
 - KF1 `CHU*` equipment whose source tag contains `_LOAD` uses a low-range
