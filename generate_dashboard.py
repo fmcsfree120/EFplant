@@ -1348,6 +1348,27 @@ def compile_quality_data(script_dir, force_base_time=None):
     if os.path.exists(quality_csv):
         try:
             df_q = normalize_plant_column(pd.read_csv(quality_csv))
+            # main.py 的既有長駐程序可能尚未重載新版匯入保護。每次產生
+            # 前台時再次以相同且可重複執行的條件校正 CSV，避免完整七日
+            # SQL 重抓將這兩只 KF1 總功率表的舊 kW 值寫回。
+            kf1_power_tags = {
+                'KFHVAC.KF_PW_2F_MGCB1_KW.F_CV',
+                'KFHVAC.KF_PW_2F_MGCB2_KW.F_CV',
+            }
+            quality_values = pd.to_numeric(df_q['VALUE'], errors='coerce')
+            kf1_power_kw_mask = (
+                df_q['TAGNAME'].astype(str).str.strip().isin(kf1_power_tags)
+                & quality_values.abs().ge(1000)
+            )
+            converted_count = int(kf1_power_kw_mask.sum())
+            if converted_count:
+                df_q.loc[kf1_power_kw_mask, 'VALUE'] = (
+                    quality_values.loc[kf1_power_kw_mask] / 1000
+                )
+                quality_temp = quality_csv + '.mw-normalize.tmp'
+                df_q.to_csv(quality_temp, index=False, encoding='utf-8-sig')
+                os.replace(quality_temp, quality_csv)
+                print(f"[NORMALIZE] KF1 廠區用電 CSV kW→MW：{converted_count} 筆。")
             # Ensure proper datetime parsing and force hourly ceil alignment
             df_q['TIMESTAMP'] = pd.to_datetime(df_q['TIMESTAMP']).dt.ceil('h')
             df_q['VALUE'] = pd.to_numeric(df_q['VALUE'], errors='coerce')
