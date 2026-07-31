@@ -34,6 +34,8 @@ BASE_DIR = Path(__file__).parent
 RUN_RATE_CSV = BASE_DIR / "latest_run_rate_backup.csv"
 QUALITY_CSV = BASE_DIR / "latest_quality_backup.csv"
 DATA_CSV = BASE_DIR / "latest_data_backup.csv"
+ALARM_KF1_CSV = BASE_DIR / "latest_alarm_history_backup.csv"
+ALARM_OTHER_CSV = BASE_DIR / "latest_alarm_history_other_backup.csv"
 OUT_JSON = BASE_DIR / "_weekly_analysis.json"
 MEMORY_JSON = BASE_DIR / "weekly_report_memory.json"
 OPENAI_KEY_PATH = BASE_DIR / "openaiKEY.txt"
@@ -70,6 +72,10 @@ TARGETS = {
 FLATLINE_MIN_POINTS = 24
 FLATLINE_ITEM_PREFIX = "整週數值無變動"
 FLATLINE_CHECK_TEXT = "應檢查儀表與通訊數據流是否故障(Keep Last)"
+DATA_GAP_MIN_HOURS = 1.0
+FLATLINE_MIN_HOURS = 48.0
+ZERO_MIN_HOURS = 4.0
+ALARM_CONNECTED_PLANTS = {"KF1", "HF", "HJ1", "HJ2", "LC2", "LC3", "PCB", "S2", "S2A", "S3", "T2A"}
 
 
 @dataclass
@@ -121,7 +127,8 @@ def clean_float(v: Any) -> float | None:
 def fmt_num(v: float | None, digits: int = 1) -> str:
     if v is None:
         return "N/A"
-    return f"{v:.{digits}f}"
+    text = f"{v:.{digits}f}"
+    return text.rstrip("0").rstrip(".") if "." in text else text
 
 
 def read_openai_api_key() -> str | None:
@@ -181,12 +188,15 @@ def build_api_prompt_markdown() -> str:
 - 不得新增或刪除列。
 - 不得新增本週資料沒有支持的事實。
 - 每個判斷必須能回推到輸入 JSON 的數值、等級或趨勢。
+- 警報資料涵蓋不足本身屬於監控風險，不得寫成「不評分」或解讀為零警報。
+- 不主動產生「運轉率不計分」等制度說明；運轉率低於 50% 時，只依 Python 既有列在管理建議中描述現象。
 
 ## 文字要求
 - 繁體中文。
 - 主管週報語氣，短、具體、可執行。
 - 優先使用半導體廠務語彙：UPW、水阻、導電度、CDA、冰機 KW/RT、冷卻水、廢水中和、FMCS、SCADA。
 - 不寫空泛句，例如「持續關注」、「加強管理」；需指出查核對象或下一步。
+- 浮點數小數點後無意義的尾端 0 不顯示。
 - 只輸出 JSON。
 """
 
@@ -671,6 +681,204 @@ def analyze_flatline_quality(df: pd.DataFrame, start: pd.Timestamp, end: pd.Time
     return issues
 
 
+def _signal_label(row: pd.Series) -> str:
+    return str(row.get("DESCRIPTION") or row.get("EQNAME") or row.get("EQNO") or row.get("TAGNAME") or "未命名訊號")
+
+
+def _is_analog_signal(group: pd.DataFrame) -> bool:
+    text = " ".join(
+        str(group.iloc[0].get(c, ""))
+        for c in ("TAGNAME", "DESCRIPTION", "EQNAME", "EQNO")
+    ).upper()
+    digital_tokens = ("RUN", "STOP", "STATUS", "COMMAND", "CMD", "ONOFF", "ON/OFF", "ALARM")
+    return not any(token in text for token in digital_tokens)
+
+
+def analyze_data_quality(
+    frames: list[pd.DataFrame], start: pd.Timestamp, end: pd.Timestamp
+) -> tuple[list[dict[str, Any]], list[Issue]]:
+    """Locate curve gaps, zero signals and rolling >=48 hour Keep Last segments."""
+    rows: list[dict[str, Any]] = []
+    issues: list[Issue] = []
+    normalized: list[pd.DataFrame] = []
+    for frame in frames:
+        if frame.empty or not {"PLANT", "TIMESTAMP", "TAGNAME", "VALUE"}.issubset(frame.columns):
+            continue
+        part = filter_period(frame, start, end).copy()
+        part["VALUE"] = pd.to_numeric(part["VALUE"], errors="coerce")
+        part = part.dropna(subset=["TIMESTAMP", "VALUE"])
+        if not part.empty:
+            normalized.append(part)
+    if not normalized:
+        return rows, issues
+
+    data = pd.concat(normalized, ignore_index=True, sort=False)
+    group_cols = ["PLANT", "TAGNAME"]
+    for (plant, tag), group in data.groupby(group_cols, dropna=False):
+        group = group.sort_values("TIMESTAMP").drop_duplicates("TIMESTAMP").reset_index(drop=True)
+        if len(group) < 3 or not _is_analog_signal(group):
+            continue
+        label = _signal_label(group.iloc[0])
+        times = group["TIMESTAMP"].reset_index(drop=True)
+        values = group["VALUE"].reset_index(drop=True)
+        diffs = times.diff().dt.total_seconds().div(3600)
+        positive = diffs[(diffs > 0) & (diffs <= 24)]
+        cadence = float(positive.median()) if not positive.empty else 1.0
+        gap_threshold = max(DATA_GAP_MIN_HOURS, cadence * 2.5)
+
+        for idx in diffs[diffs > gap_threshold].index:
+            gap_hours = float(diffs.iloc[idx])
+            gap_start = times.iloc[idx - 1]
+            gap_end = times.iloc[idx]
+            level = "CRITICAL" if gap_hours >= 24 else "MAJOR" if gap_hours >= 4 else "WARNING"
+            rows.append({
+                "plant": str(plant), "type": "曲線空窗", "point": short_text(label, 34),
+                "period": f"{gap_start:%m/%d %H:%M}～{gap_end:%m/%d %H:%M}",
+                "duration": f"{fmt_num(gap_hours)} 小時", "detail": f"推估取樣週期 {fmt_num(cadence, 2)} 小時",
+                "level": level,
+            })
+            issues.append(Issue(
+                plant=str(plant), item="資料中斷／曲線空窗",
+                phenomenon=f"{label} 於 {gap_start:%m/%d %H:%M}～{gap_end:%m/%d %H:%M} 無曲線，持續 {fmt_num(gap_hours)} 小時。",
+                impact="形成 FMCS 監控盲區，期間無法確認設備或製程狀態。",
+                level=level, action=f"檢查 {plant} 的儀表、PLC/SCADA 通訊、網路節點及資料匯入排程。",
+                score=gap_hours, date=f"{gap_start:%m/%d}", metric="資料完整性",
+                current=f"中斷 {fmt_num(gap_hours)} 小時", target="曲線連續無空窗", trend="下降",
+                forecast="若持續中斷，將造成監控盲區與異常追溯困難。",
+            ))
+
+        zero_mask = values.abs() <= 1e-12
+        if zero_mask.any():
+            segment = (zero_mask != zero_mask.shift(fill_value=False)).cumsum()
+            for _, idxs in group.groupby(segment).groups.items():
+                idxs = list(idxs)
+                local = group.loc[idxs].sort_values("TIMESTAMP")
+                if local.empty or abs(float(local.iloc[0]["VALUE"])) > 1e-12:
+                    continue
+                z_start, z_end = local["TIMESTAMP"].iloc[0], local["TIMESTAMP"].iloc[-1]
+                duration = max(0.0, (z_end - z_start).total_seconds() / 3600)
+                all_zero = bool(zero_mask.all())
+                if not all_zero and duration < ZERO_MIN_HOURS:
+                    continue
+                kind = "持續為 0" if all_zero else "降為 0"
+                level = "MAJOR" if all_zero or duration >= 24 else "WARNING"
+                rows.append({
+                    "plant": str(plant), "type": kind, "point": short_text(label, 34),
+                    "period": f"{z_start:%m/%d %H:%M}～{z_end:%m/%d %H:%M}",
+                    "duration": f"{fmt_num(duration)} 小時", "detail": "類比值為 0，需確認是否符合操作狀態",
+                    "level": level,
+                })
+                issues.append(Issue(
+                    plant=str(plant), item=f"訊號{kind}",
+                    phenomenon=f"{label} {kind}，自 {z_start:%m/%d %H:%M} 起持續 {fmt_num(duration)} 小時。",
+                    impact="可能為儀表、電源、I/O 或訊號迴路異常。",
+                    level=level, action=f"比對 {plant} 現場儀表及操作狀態，檢查電源、I/O 與訊號迴路。",
+                    score=max(duration, 1.0), date=f"{z_start:%m/%d}", metric="零值訊號",
+                    current=f"{kind} {fmt_num(duration)} 小時", target="依製程正常變動", trend="下降",
+                    forecast="若非正常停機狀態，可能已失去有效量測。",
+                ))
+                break
+
+        change_group = values.ne(values.shift()).cumsum()
+        for _, idxs in group.groupby(change_group).groups.items():
+            local = group.loc[list(idxs)].sort_values("TIMESTAMP")
+            if len(local) < 2:
+                continue
+            f_start, f_end = local["TIMESTAMP"].iloc[0], local["TIMESTAMP"].iloc[-1]
+            duration = (f_end - f_start).total_seconds() / 3600
+            if duration < FLATLINE_MIN_HOURS:
+                continue
+            fixed = float(local["VALUE"].iloc[0])
+            rows.append({
+                "plant": str(plant), "type": "Keep Last", "point": short_text(label, 34),
+                "period": f"{f_start:%m/%d %H:%M}～{f_end:%m/%d %H:%M}",
+                "duration": f"{fmt_num(duration)} 小時", "detail": f"固定值 {fmt_num(fixed, 3)}；振幅 0%",
+                "level": "MAJOR",
+            })
+            issues.append(Issue(
+                plant=str(plant), item="超過48小時數值無變動",
+                phenomenon=f"{label} 固定於 {fmt_num(fixed, 3)}，連續 {fmt_num(duration)} 小時振幅 0%。",
+                impact=FLATLINE_CHECK_TEXT, level="MAJOR",
+                action=FLATLINE_CHECK_TEXT, score=duration, date=f"{f_start:%m/%d}",
+                metric="Keep Last", current=f"{fmt_num(fixed, 3)}（{fmt_num(duration)} 小時，0%）",
+                target="數值應隨製程合理變動", trend="持平",
+                forecast=f"{strip_plant_prefix(label, str(plant))}：{FLATLINE_CHECK_TEXT}",
+            ))
+            break
+
+    type_order = {"曲線空窗": 0, "降為 0": 1, "持續為 0": 1, "Keep Last": 2}
+    rows.sort(key=lambda r: (LEVEL_WEIGHT.get(r["level"], 0), -type_order.get(r["type"], 9)), reverse=True)
+    return rows, issues
+
+
+def analyze_alarm_risk(start: pd.Timestamp, end: pd.Timestamp) -> list[dict[str, Any]]:
+    frames: list[pd.DataFrame] = []
+    for path in (ALARM_KF1_CSV, ALARM_OTHER_CSV):
+        frame = read_csv(path)
+        if not frame.empty:
+            frames.append(frame)
+    if not frames:
+        return []
+    alarms = pd.concat(frames, ignore_index=True, sort=False)
+    alarms["TIME"] = pd.to_datetime(alarms.get("ALM_NATIVETIMELAST"), errors="coerce")
+    alarms = alarms.dropna(subset=["TIME"])
+    period_hours = max((end - start).total_seconds() / 3600, 1.0)
+    expected_days = max((end.normalize() - start.normalize()).days + 1, 1)
+    results: list[dict[str, Any]] = []
+    for plant in sorted(ALARM_CONNECTED_PLANTS, key=lambda p: (PLANT_ORDER.index(p), p) if p in PLANT_ORDER else (99, p)):
+        source = alarms[alarms["PLANT"].astype(str).str.strip().str.upper() == plant].copy()
+        period = source[(source["TIME"] >= start) & (source["TIME"] <= end)].copy()
+        if period.empty:
+            results.append({
+                "plant": plant, "risk_score": 100.0, "health_score": 0.0, "abnormal": 0,
+                "critical": 0, "active_high": 0, "coverage": 0.0, "freshness": "無當週資料",
+                "top_risk": "本週無警報資料，疑似資料中斷", "status": "CRITICAL",
+            })
+            continue
+        for col in ("ALM_ALMSTATUS", "ALM_ALMPRIORITY", "ALM_TAGNAME", "ALM_DESCR"):
+            period[col] = period.get(col, "").fillna("").astype(str).str.strip().str.upper()
+        actual_days = period["TIME"].dt.normalize().nunique()
+        coverage = min(100.0, actual_days / expected_days * 100)
+        latest = period.sort_values("TIME").drop_duplicates("ALM_TAGNAME", keep="last")
+        weights = {"OK": 0, "CFN": 30, "LO": 60, "HI": 60, "LOLO": 90, "HIHI": 90}
+        tag_risk = latest["ALM_ALMSTATUS"].map(weights).fillna(30).astype(float)
+        tag_risk += (latest["ALM_ALMPRIORITY"] == "CRITICAL").astype(int) * 10
+        risk_score = float(tag_risk.clip(upper=100).mean()) if len(latest) else 0.0
+        abnormal = int((period["ALM_ALMSTATUS"] != "OK").sum())
+        critical = int((period["ALM_ALMPRIORITY"] == "CRITICAL").sum())
+        active_high = int(latest["ALM_ALMSTATUS"].isin(["HIHI", "LOLO"]).sum())
+        volume_penalty = min(25.0, abnormal / period_hours * 5.0)
+        critical_penalty = min(25.0, critical * 1.5 + active_high * 5.0)
+        coverage_penalty = max(0.0, 100.0 - coverage) * 0.6
+        combined_risk = min(
+            100.0,
+            risk_score * 0.5 + volume_penalty + critical_penalty + coverage_penalty,
+        )
+        top = (
+            period[period["ALM_ALMSTATUS"] != "OK"]
+            .groupby(["ALM_TAGNAME", "ALM_DESCR"]).size().sort_values(ascending=False)
+        )
+        top_risk = "本週無異常警報" if top.empty else f"{top.index[0][1] or top.index[0][0]}（{int(top.iloc[0])}次）"
+        health_score = 100.0 - combined_risk
+        status = (
+            "NORMAL" if combined_risk < 30
+            else "WARNING" if combined_risk < 60
+            else "MAJOR" if combined_risk < 80
+            else "CRITICAL"
+        )
+        coverage_note = f"資料覆蓋 {fmt_num(coverage)}%"
+        top_risk = f"{coverage_note}；{top_risk}"
+        results.append({
+            "plant": plant, "risk_score": round(combined_risk, 1),
+            "health_score": round(health_score, 1), "abnormal": abnormal, "critical": critical,
+            "active_high": active_high, "coverage": round(coverage, 1),
+            "freshness": f"{period['TIME'].max():%m/%d %H:%M}",
+            "top_risk": top_risk,
+            "status": status,
+        })
+    return results
+
+
 def analyze_run_rate(df: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp) -> tuple[list[Issue], dict[str, dict[str, float]]]:
     issues: list[Issue] = []
     stats: dict[str, dict[str, float]] = {}
@@ -828,11 +1036,11 @@ def analyze_quality(df: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp) ->
                 trend = "偏高"
             elif kind == "compressor":
                 item = "空壓效率偏低"
-                phenomenon = f"{desc} 週均 {fmt_num(mean, 2)} CMM/kWh，低於管制值 {target:.1f}。"
+                phenomenon = f"{desc} 週均 {fmt_num(mean, 2)} CMM/kWh，低於管制值 {fmt_num(target)}。"
                 impact = "空壓系統效率不足，可能與洩漏、負載分配或壓縮機效率有關。"
                 action = f"檢查 {plant} 空壓機負載分配、管路洩漏與進氣條件。"
                 current = f"週均 {fmt_num(mean, 2)} CMM/kWh"
-                target_txt = f">{target:.1f} CMM/kWh"
+                target_txt = f">{fmt_num(target)} CMM/kWh"
                 trend = "偏低"
             elif kind == "resistance":
                 item = "超純水水阻偏低"
@@ -844,19 +1052,19 @@ def analyze_quality(df: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp) ->
                 trend = "偏低"
             elif kind == "conductivity":
                 item = "出水導電度偏高"
-                phenomenon = f"{desc} 週均 {fmt_num(mean, 2)}，高於管制值 {target:.1f}。"
+                phenomenon = f"{desc} 週均 {fmt_num(mean, 2)}，高於管制值 {fmt_num(target)}。"
                 impact = "導電度偏高代表水質惡化，需確認純水或回收水處理狀態。"
                 action = f"確認 {plant} 導電度儀表、RO/DI 單元與水處理耗材狀態。"
                 current = f"週均 {fmt_num(mean, 2)}"
-                target_txt = f"<{target:.1f}"
+                target_txt = f"<{fmt_num(target)}"
                 trend = "偏高"
             else:
                 item = "廢水 pH 偏離"
-                phenomenon = f"{desc} 範圍 {fmt_num(mn, 2)}～{fmt_num(mx, 2)}，超出 {TARGETS['ph_low']:.1f}～{TARGETS['ph_high']:.1f} 管制區間或接近邊界。"
+                phenomenon = f"{desc} 範圍 {fmt_num(mn, 2)}～{fmt_num(mx, 2)}，超出 {fmt_num(TARGETS['ph_low'])}～{fmt_num(TARGETS['ph_high'])} 管制區間或接近邊界。"
                 impact = "廢水 pH 偏離可能造成排放風險與加藥控制異常。"
                 action = f"複核 {plant} 中和槽加藥量、pH 控制邏輯與告警設定。"
                 current = f"{fmt_num(mn, 2)}～{fmt_num(mx, 2)}"
-                target_txt = f"{TARGETS['ph_low']:.1f}～{TARGETS['ph_high']:.1f}"
+                target_txt = f"{fmt_num(TARGETS['ph_low'])}～{fmt_num(TARGETS['ph_high'])}"
                 trend = "偏離"
 
             issues.append(Issue(
@@ -984,6 +1192,94 @@ def health_scores(run_stats: dict[str, dict[str, float]], plant_metrics: dict[st
     return rows
 
 
+def health_scores_v2(
+    run_stats: dict[str, dict[str, float]],
+    plant_metrics: dict[str, dict[str, list[pd.Series]]],
+    issues: list[Issue],
+    source_plants: set[str],
+    alarm_risk: list[dict[str, Any]],
+    data_quality: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Approved weighted score: energy/water/data/alarm/trend; run rate excluded."""
+    by_plant: dict[str, list[Issue]] = {}
+    for issue in issues:
+        by_plant.setdefault(issue.plant, []).append(issue)
+    alarm_by_plant = {row["plant"]: row for row in alarm_risk}
+    dq_by_plant: dict[str, list[dict[str, Any]]] = {}
+    for row in data_quality:
+        dq_by_plant.setdefault(row["plant"], []).append(row)
+    plants = sorted(
+        set(PLANT_ORDER) | set(source_plants) | set(alarm_by_plant),
+        key=lambda p: (PLANT_ORDER.index(p), p) if p in PLANT_ORDER else (len(PLANT_ORDER), p),
+    )
+    rows: list[dict[str, Any]] = []
+    for plant in plants:
+        adv: list[str] = []
+        weak: list[str] = []
+        pm = plant_metrics.get(plant, {})
+        energy_parts: list[float] = []
+        if pm.get("chiller"):
+            value = min(float(r["mean"]) for r in pm["chiller"])
+            energy_parts.append(min(100.0, TARGETS["chiller_kwrt"] / max(value, 0.01) * 100.0))
+        if pm.get("compressor"):
+            value = max(float(r["mean"]) for r in pm["compressor"])
+            energy_parts.append(min(100.0, value / TARGETS["compressor_cmmkwh"] * 100.0))
+        energy = sum(energy_parts) / len(energy_parts) if energy_parts else 50.0
+
+        water_parts: list[float] = []
+        if pm.get("resistance"):
+            value = min(float(r["mean"]) for r in pm["resistance"])
+            water_parts.append(min(100.0, value / TARGETS["upw_resistance"] * 100.0))
+        if pm.get("ph"):
+            distance = max(abs(float(r["mean"]) - 7.0) for r in pm["ph"])
+            water_parts.append(max(0.0, 100.0 - max(0.0, distance - 1.5) * 20.0))
+        if pm.get("conductivity"):
+            value = max(float(r["mean"]) for r in pm["conductivity"])
+            water_parts.append(min(100.0, TARGETS["conductivity"] / max(value, 0.01) * 100.0))
+        water = sum(water_parts) / len(water_parts) if water_parts else 50.0
+
+        dq_rows = dq_by_plant.get(plant, [])
+        dq_penalty = sum({"CRITICAL": 25, "MAJOR": 12, "WARNING": 5}.get(r["level"], 0) for r in dq_rows)
+        data_health = max(0.0, 100.0 - min(100.0, dq_penalty))
+        if dq_rows:
+            weak.append(f"資料品質異常 {len(dq_rows)} 項")
+        else:
+            adv.append("未發現曲線空窗、歸零或48小時 Keep Last")
+
+        alarm = alarm_by_plant.get(plant)
+        alarm_health = float(alarm["health_score"]) if alarm else 50.0
+        if alarm and alarm.get("risk_score") is not None:
+            (adv if alarm["risk_score"] < 30 else weak).append(f"警報風險 {fmt_num(alarm['risk_score'])}")
+        elif plant in ALARM_CONNECTED_PLANTS:
+            weak.append("警報資料涵蓋不足，不列入正式比較")
+
+        trend_issues = [
+            issue for issue in by_plant.get(plant, [])
+            if not any(token in issue.item for token in ("資料", "訊號", "48小時"))
+        ]
+        trend_penalty = sum({"CRITICAL": 35, "MAJOR": 20, "WARNING": 8}.get(i.level, 0) for i in trend_issues)
+        trend = max(0.0, 100.0 - min(100.0, trend_penalty))
+        breakdown = {
+            "energy": round(energy * 0.30, 1),
+            "water": round(water * 0.25, 1),
+            "data_health": round(data_health * 0.20, 1),
+            "alarm": round(alarm_health * 0.15, 1),
+            "trend": round(trend * 0.10, 1),
+        }
+        score = round(sum(breakdown.values()), 1)
+        status = "NORMAL" if score >= 85 else "WARNING" if score >= 70 else "MAJOR" if score >= 55 else "CRITICAL"
+        rows.append({
+            "rank": 0, "plant": plant, "score": score,
+            "advantage": "；".join(adv[:3]) if adv else "本週未發現明顯優勢",
+            "weakness": "；".join(weak[:3]) if weak else "本週無重大待改善項目",
+            "status": status, "score_breakdown": breakdown,
+        })
+    rows.sort(key=lambda row: row["score"], reverse=True)
+    for rank, row in enumerate(rows, 1):
+        row["rank"] = rank
+    return rows
+
+
 def dedupe_issues(issues: list[Issue]) -> list[Issue]:
     """Keep the strongest issue per plant/item pair to avoid noisy repeats."""
     chosen: dict[tuple[str, str], Issue] = {}
@@ -1038,13 +1334,38 @@ def build_report(start: pd.Timestamp, end: pd.Timestamp) -> dict[str, Any]:
         for plant in frame["PLANT"].dropna().unique()
     }
 
-    run_issues, run_stats = analyze_run_rate(run_df, start, end)
+    _run_issues, run_stats = analyze_run_rate(run_df, start, end)
     quality_issues, plant_metrics, best, worst = analyze_quality(quality_df, start, end)
-    flatline_issues = analyze_flatline_quality(quality_df, start, end)
-    all_issues = dedupe_issues(run_issues + quality_issues + flatline_issues)
+    data_quality, data_quality_issues = analyze_data_quality(
+        [quality_df, equipment_df], start, end
+    )
+    alarm_risk = analyze_alarm_risk(start, end)
+    alarm_issues: list[Issue] = []
+    for alarm in alarm_risk:
+        risk = alarm.get("risk_score")
+        if risk is None or risk < 30:
+            continue
+        level = "CRITICAL" if alarm.get("active_high", 0) > 0 or risk >= 75 else "MAJOR" if risk >= 60 else "WARNING"
+        alarm_issues.append(Issue(
+            plant=alarm["plant"], item="警報風險",
+            phenomenon=(
+                f"本週異常警報 {alarm['abnormal']} 次、Critical {alarm['critical']} 次、"
+                f"HIHI/LOLO 未復歸 {alarm['active_high']} 點，風險 {fmt_num(risk)}。"
+            ),
+            impact="高頻或未復歸警報可能代表設備、製程或環安風險。",
+            level=level,
+            action=f"優先處理 {alarm['plant']} 警報 TOP 項目：{alarm['top_risk']}，確認原因與復歸紀錄。",
+            score=float(risk), metric="警報風險", current=fmt_num(risk),
+            target="<30", trend="上升",
+            forecast="若高風險警報持續，可能造成設備異常擴大或監控負荷增加。",
+        ))
+    # Run rate is intentionally excluded from ranking, TOP events and trend pages.
+    all_issues = dedupe_issues(quality_issues + data_quality_issues + alarm_issues)
     all_issues.sort(key=lambda x: rank_level(x.level, x.score), reverse=True)
 
-    health = health_scores(run_stats, plant_metrics, all_issues, source_plants)
+    health = health_scores_v2(
+        run_stats, plant_metrics, all_issues, source_plants, alarm_risk, data_quality
+    )
 
     top3 = []
     for idx, issue in enumerate(select_diverse(all_issues, 3), 1):
@@ -1093,6 +1414,20 @@ def build_report(start: pd.Timestamp, end: pd.Timestamp) -> dict[str, Any]:
         "action": issue.action,
         "level": issue.level,
     } for idx, issue in enumerate(all_issues[:5], 1)]
+    low_run_rate_reminders = [
+        {
+            "priority": "",
+            "plant": plant,
+            "item": "運轉率低於50%提醒",
+            "action": f"本週平均運轉率 {fmt_num(stats['mean'])}%，提醒主管注意此現象。",
+            "level": "WARNING",
+        }
+        for plant, stats in sorted(run_stats.items())
+        if float(stats.get("mean", 100.0)) < 50.0
+    ]
+    actions.extend(low_run_rate_reminders)
+    for idx, action in enumerate(actions, 1):
+        action["priority"] = str(idx)
 
     best_plants = " / ".join(r["plant"] for r in health[:3])
     worst_plants = " / ".join(r["plant"] for r in health[-3:][::-1])
@@ -1120,6 +1455,8 @@ def build_report(start: pd.Timestamp, end: pd.Timestamp) -> dict[str, Any]:
         "best_performers": best,
         "worst_areas": worst,
         "actions": actions,
+        "alarm_risk": alarm_risk,
+        "data_quality": data_quality,
     }
 
 
