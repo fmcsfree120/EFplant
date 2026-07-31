@@ -93,6 +93,10 @@ Do not accidentally stage local secrets or deployment helpers, especially:
 - `accounts.json`
 - unreviewed `.ps1`, `.bat`, or local task scripts
 
+As of 2026-08-01, `AnthropicKey.txt` and all `*.ps1` files are covered by
+`.gitignore`, so a plain `git add .` will no longer stage them. See
+"Secret and Deployment File Protection" below for the standing rule.
+
 6. Commit and push.
 
 ```powershell
@@ -121,6 +125,39 @@ Required checks:
   - Unregister all service workers for the site.
   - Clear site storage.
   - Reload with cache disabled.
+
+## Secret and Deployment File Protection
+
+`EFplant`'s remote (`fmcsfree120/EFplant`) is a **public** repository that
+also publishes to GitHub Pages. Any file that reaches a commit can become
+publicly visible, so local secrets and internal deployment helpers must stay
+outside Git entirely rather than relying on manual review at commit time.
+
+### Standing `.gitignore` Rules (since 2026-08-01)
+
+- `AnthropicKey.txt` is explicitly listed next to `openaiKEY.txt` in the
+  "帳密與敏感設定" block of `.gitignore`.
+- `*.ps1` is ignored the same way `*.bat` and `*.vbs` already are, so all
+  local deployment/task scripts (e.g. `send_weekly_report.ps1`,
+  `deploy_eshplantform.ps1`, `Setup_Weekly_*.ps1`, `Deploy_Weekly_*.ps1`) are
+  excluded by default. They contain internal IPs, SMTP hosts, and recipient
+  addresses that must not reach the public repo.
+
+### Rule for New Secret or Internal-Only Files
+
+Whenever a new API key file, credential file, or internal deployment script
+is added to this project:
+
+1. Add its exact filename (for a one-off secret file) or its extension
+   pattern (for a whole class of local-only scripts) to `.gitignore` in the
+   same commit that introduces the file — do not defer this.
+2. Never rely on remembering to exclude it manually with `git add <specific files>`;
+   pattern-based `.gitignore` rules are the actual safety net.
+3. Verify with `git status --short` that the new file does not appear as
+   untracked (`??`) before it is left in place.
+4. If a secret or internal script was ever force-added (`git add -f`) or
+   committed before an ignore rule existed, adding the ignore rule alone is
+   not enough — treat the exposed value as compromised and rotate it.
 
 ## When Source Logic Changes
 
