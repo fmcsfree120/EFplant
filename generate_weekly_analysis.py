@@ -39,6 +39,7 @@ ALARM_OTHER_CSV = BASE_DIR / "latest_alarm_history_other_backup.csv"
 OUT_JSON = BASE_DIR / "_weekly_analysis.json"
 MEMORY_JSON = BASE_DIR / "weekly_report_memory.json"
 OPENAI_KEY_PATH = BASE_DIR / "openaiKEY.txt"
+SPECIAL_CASE_TXT = BASE_DIR / "specialcase-weekly.txt"
 LOCAL_CONTEXT_DIR = BASE_DIR / "localcontext"
 LOCAL_CONTEXT_MD = LOCAL_CONTEXT_DIR / "weekly_report_api_context.md"
 API_PROMPT_MD = LOCAL_CONTEXT_DIR / "weekly_report_api_prompt.md"
@@ -138,6 +139,70 @@ def read_openai_api_key() -> str | None:
     return key or None
 
 
+def load_special_case_text() -> str:
+    """每週例外情況登記檔：由使用者手動維護，空白代表本週無特殊情況。"""
+    if not SPECIAL_CASE_TXT.exists():
+        return ""
+    try:
+        text = SPECIAL_CASE_TXT.read_text(encoding="utf-8-sig", errors="ignore")
+    except OSError:
+        return ""
+    return text.strip()
+
+
+def split_special_case_items(text: str) -> list[str]:
+    items = re.split(r"\n(?=\s*\d+[\.\、])", text.strip())
+    return [item.strip() for item in items if item.strip()]
+
+
+def match_special_case_plants(item: str, known_plants: set[str]) -> list[str]:
+    matched = []
+    for plant in sorted(known_plants, key=len, reverse=True):
+        if re.search(rf"(?<![A-Za-z0-9]){re.escape(plant)}(?![A-Za-z0-9])", item):
+            matched.append(plant)
+    return matched
+
+
+def assign_special_cases(text: str, known_plants: set[str]) -> dict[str, list[str]]:
+    """Map each item in specialcase-weekly.txt to the plant(s) it mentions."""
+    by_plant: dict[str, list[str]] = {}
+    for item in split_special_case_items(text):
+        clean = re.sub(r"^\s*\d+[\.\、]\s*", "", item).strip()
+        if not clean:
+            continue
+        for plant in match_special_case_plants(item, known_plants):
+            by_plant.setdefault(plant, []).append(clean)
+    return by_plant
+
+
+def special_case_action_rows(known_plants: set[str]) -> list[dict[str, Any]]:
+    """Read specialcase-weekly.txt and turn each item into a P7 action row.
+
+    Raw text is kept here so information is never lost even if the OpenAI
+    polishing step is unavailable; polish_weekly_report_text_with_openai() then
+    rewrites the "action" text (like any other action row) into report tone.
+    Priority is left blank and assigned later when the full actions list is
+    renumbered, so these rows are appended after the existing priority order.
+    """
+    text = load_special_case_text()
+    if not text:
+        return []
+    rows = []
+    for item in split_special_case_items(text):
+        clean = re.sub(r"^\s*\d+[\.\、]\s*", "", item).strip()
+        if not clean:
+            continue
+        matched = match_special_case_plants(item, known_plants)
+        rows.append({
+            "priority": "",
+            "plant": "/".join(matched) if matched else "全廠",
+            "item": "本週特殊情況",
+            "action": clean,
+            "level": "WARNING",
+        })
+    return rows
+
+
 def prune_local_context(now: datetime | None = None) -> None:
     LOCAL_CONTEXT_DIR.mkdir(exist_ok=True)
     now = now or datetime.now()
@@ -182,6 +247,10 @@ def build_api_prompt_markdown() -> str:
 - 未來風險預警：forecast。
 - 各廠區健康度評分：advantage、weakness。
 - 管理建議與追蹤事項：action。
+
+## 管理建議與追蹤事項中的廠區例外情況
+- 部分 actions 列的 item 為「本週特殊情況」，代表現場人員本週在 specialcase-weekly.txt 手動登記的例外情況，屬本週資料的一部分。
+- 這類 action 文字必須修飾為主管週報語氣，只能改寫語氣與用詞，不得刪減原始事實，也不得新增登記內容沒有提到的臆測原因，不可搬移到其他 plant。
 
 ## 不可變更
 - 不得改 rank、priority、date、plant、item、metric、current、target、trend、level、score、status。
@@ -1426,6 +1495,7 @@ def build_report(start: pd.Timestamp, end: pd.Timestamp) -> dict[str, Any]:
         if float(stats.get("mean", 100.0)) < 50.0
     ]
     actions.extend(low_run_rate_reminders)
+    actions.extend(special_case_action_rows(set(PLANT_ORDER) | source_plants))
     for idx, action in enumerate(actions, 1):
         action["priority"] = str(idx)
 
