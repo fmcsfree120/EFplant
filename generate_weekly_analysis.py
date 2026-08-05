@@ -23,6 +23,8 @@ from typing import Any
 import pandas as pd
 
 
+from alarm_filter import filter_alarm_records
+
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
@@ -891,6 +893,7 @@ def analyze_alarm_risk(start: pd.Timestamp, end: pd.Timestamp) -> list[dict[str,
     alarms = pd.concat(frames, ignore_index=True, sort=False)
     alarms["TIME"] = pd.to_datetime(alarms.get("ALM_NATIVETIMELAST"), errors="coerce")
     alarms = alarms.dropna(subset=["TIME"])
+    alarms = filter_alarm_records(alarms)
     period_hours = max((end - start).total_seconds() / 3600, 1.0)
     expected_days = max((end.normalize() - start.normalize()).days + 1, 1)
     results: list[dict[str, Any]] = []

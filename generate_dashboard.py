@@ -13,6 +13,7 @@ from Crypto.Random import get_random_bytes
 from Crypto.Protocol.KDF import PBKDF2
 from Crypto.Hash import SHA256
 from Crypto.Util.Padding import pad
+from alarm_filter import filter_alarm_records
 
 # ── 強制 stdout/stderr 以 UTF-8 輸出 ────────────────────────────────
 # Windows 主控台預設為 cp950(Big5)，print 中文或 emoji 時可能拋出
@@ -215,6 +216,7 @@ def build_kf1_alarm_dashboard(script_dir: str, plant: str = "KF1") -> str:
         for col in ("ALM_TAGNAME", "ALM_DESCR", "ALM_ALMSTATUS", "ALM_ALMPRIORITY"):
             alarms[col] = alarms[col].fillna("").astype(str).str.strip()
         alarms = alarms.dropna(subset=["TIME"]).sort_values("TIME")
+        alarms = filter_alarm_records(alarms)
         if alarms.empty:
             raise ValueError("CSV 沒有有效時間資料")
 
@@ -792,7 +794,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'daily-alarm-7d-20260805-1';
+var CACHE_EPOCH = 'alarm-filter-20260805-1';
 
 (function resetOldFrontendCache() {
   try {
@@ -1099,7 +1101,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=daily-alarm-7d-20260805-1', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=alarm-filter-20260805-1', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
