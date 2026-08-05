@@ -4,7 +4,7 @@
 
 同一套警報過濾器必須同時套用於：
 
-- Dashboard 的「TOP 10 高風險設備」與「TOP 10 警報復歸耗時」。
+- 每個廠區「廠區運行風險總覽」的全部子看板：KPI 摘要、風險分數、每日警報趨勢、24 小時風險熱區、TOP 10 高風險設備、TOP 10 警報復歸耗時，以及資料完整度。
 - 管理週報的 `alarm_risk`、健康度排序及所有以警報資料計算的評比。
 
 過濾必須在警報資料完成欄位清理後、任何期間統計、分組、排名或評分前執行；被排除的紀錄不得以零警報、資料缺失或任何替代值重新納入評比。
@@ -32,5 +32,5 @@
 ## 驗證與發布
 
 1. 執行 `python -m py_compile alarm_filter.py generate_dashboard.py generate_weekly_analysis.py`。
-2. 重建 Dashboard 與週報 JSON，確認被排除描述不出現在兩個 TOP 10 看板、`alarm_risk`、週報健康度排序或相關警報計算中。
+2. 重建 Dashboard 與週報 JSON，確認被排除描述不出現在「廠區運行風險總覽」任一子看板、`alarm_risk`、週報健康度排序或相關警報計算中。
 3. 前端變更完整遵循 `FRONTEND_UPDATE_SOP.md`：更新快取版本、重建、暫存必要部署檔、提交、推送並驗證正式 GitHub Pages。

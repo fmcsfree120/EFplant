@@ -245,6 +245,9 @@ def build_kf1_alarm_dashboard(script_dir: str, plant: str = "KF1") -> str:
         for col in ("ALM_TAGNAME", "ALM_DESCR", "ALM_ALMSTATUS", "ALM_ALMPRIORITY"):
             alarms[col] = alarms[col].fillna("").astype(str).str.strip()
         alarms = alarms.dropna(subset=["TIME"]).sort_values("TIME")
+        # This is the single input for the complete plant operational-risk
+        # overview: KPI summary, daily/hourly trends, both TOP 10 panels and
+        # data coverage must all use the same filtered records.
         alarms = filter_alarm_records(alarms)
         if alarms.empty:
             raise ValueError("CSV 沒有有效時間資料")
