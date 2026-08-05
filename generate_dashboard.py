@@ -255,12 +255,20 @@ def build_kf1_alarm_dashboard(script_dir: str, plant: str = "KF1") -> str:
                     .head(10))
 
         # 每日警報趨勢維持七日直條顯示，並納入每 30 分鐘同步的當日最新資料。
-        daily = (alarms.assign(DAY=alarms["TIME"].dt.strftime("%m/%d"))
-                       .groupby("DAY", sort=False)
+        # The alarm CSV retains a longer history for reporting, but the dashboard
+        # must present a comparable, fixed seven-calendar-day trend per plant.
+        daily_start = max_time.normalize() - pd.Timedelta(days=6)
+        daily_source = alarms[alarms["TIME"] >= daily_start]
+        daily_dates = pd.date_range(daily_start, max_time.normalize(), freq="D")
+        daily = (daily_source.assign(DATE=daily_source["TIME"].dt.normalize())
+                       .groupby("DATE", sort=True)
                        .agg(TOTAL=("TIME", "size"),
                             ABNORMAL=("ALM_ALMSTATUS", lambda s: int((s != "OK").sum())),
                             CRITICAL=("ALM_ALMPRIORITY", lambda s: int((s == "CRITICAL").sum())))
+                       .reindex(daily_dates, fill_value=0)
+                       .rename_axis("DATE")
                        .reset_index())
+        daily["DAY"] = daily["DATE"].dt.strftime("%m/%d")
         hourly = (alarms.assign(HOUR=alarms["TIME"].dt.hour)
                         .groupby("HOUR").size().reindex(range(24), fill_value=0))
 
@@ -784,7 +792,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'multi-plant-alarm-hf-20260729-1';
+var CACHE_EPOCH = 'daily-alarm-7d-20260805-1';
 
 (function resetOldFrontendCache() {
   try {
@@ -1091,7 +1099,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=multi-plant-alarm-hf-20260729-1', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=daily-alarm-7d-20260805-1', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
