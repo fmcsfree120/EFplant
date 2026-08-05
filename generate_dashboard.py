@@ -83,6 +83,35 @@ def select_recovery_top_records(recovered: pd.DataFrame, limit: int = 10) -> pd.
         ["RECOVERY_SECONDS", "RECOVERY_TIME"], ascending=[False, False]
     ).head(limit).reset_index(drop=True)
 
+def build_recovery_events(alarms: pd.DataFrame, window_start: pd.Timestamp,
+                          window_end: pd.Timestamp) -> pd.DataFrame:
+    """Pair every non-OK state with its next OK state for one plant.
+
+    The alarm source can retain ALM_DATEIN after a tag returns to OK and later
+    alarms again.  Pairing ordered state transitions prevents those separate
+    events from being merged into one long recovery duration.
+    """
+    columns = list(alarms.columns) + ["START_TIME", "RECOVERY_TIME", "RECOVERY_SECONDS"]
+    events: list[dict] = []
+    for _, history in alarms.sort_values("TIME").groupby("ALM_TAGNAME", sort=False):
+        active_start = None
+        for _, row in history.iterrows():
+            status = str(row["ALM_ALMSTATUS"]).strip().upper()
+            event_time = row["TIME"]
+            if status == "OK":
+                if active_start is not None:
+                    event = row.to_dict()
+                    event["START_TIME"] = active_start
+                    event["RECOVERY_TIME"] = event_time
+                    event["RECOVERY_SECONDS"] = (event_time - active_start).total_seconds()
+                    if window_start <= event_time <= window_end:
+                        events.append(event)
+                    active_start = None
+            elif active_start is None:
+                active_start = event_time
+    return pd.DataFrame(events, columns=columns)
+
+
 def classify_equipment(eqno: str) -> str:
     if not isinstance(eqno, str):
         return "其他設備"
@@ -306,14 +335,9 @@ def build_kf1_alarm_dashboard(script_dir: str, plant: str = "KF1") -> str:
             )
 
         # OK 紀錄同時帶有警報進入與最後復歸時間，可直接計算實際復歸耗時。
-        recovered = top10_alarms[top10_alarms["ALM_ALMSTATUS"] == "OK"].copy()
-        recovered["START_TIME"] = pd.to_datetime(
-            recovered["ALM_DATEIN"].astype(str).str.strip() + " " + recovered["ALM_TIMEIN"].astype(str).str.strip(),
-            format="mixed", errors="coerce")
-        recovered["RECOVERY_TIME"] = pd.to_datetime(
-            recovered["ALM_DATELAST"].astype(str).str.strip() + " " + recovered["ALM_TIMELAST"].astype(str).str.strip(),
-            format="mixed", errors="coerce")
-        recovered["RECOVERY_SECONDS"] = (recovered["RECOVERY_TIME"] - recovered["START_TIME"]).dt.total_seconds()
+        # Match full state transitions first, then keep recoveries that occurred
+        # during this plant's most recent 24-hour display window.
+        recovered = build_recovery_events(alarms, top10_cutoff, max_time)
 
         # 每個 Tag 只取最近 24 小時內最長的一次「進入→OK」，依該次實際耗時排名。
         recovered = recovered[
@@ -794,7 +818,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'alarm-filter-20260805-1';
+var CACHE_EPOCH = 'recovery-transition-20260805-1';
 
 (function resetOldFrontendCache() {
   try {
@@ -1101,7 +1125,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=alarm-filter-20260805-1', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=recovery-transition-20260805-1', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
