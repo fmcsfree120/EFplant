@@ -24,6 +24,9 @@ def excluded_alarm_description(description: object) -> bool:
             and any(term in text for term in ("無塵室", "CR"))
         )
         or any(term in text for term in ("再生", "樹脂"))
+        or "變頻回授" in text
+        or ("區" in text and "溫度" in text)
+        or ("區" in text and any(term in text for term in ("溼度", "濕度")))
         or "L" in text
         or "H" in text
     )
