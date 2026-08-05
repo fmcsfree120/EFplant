@@ -395,7 +395,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'multi-plant-alarm-hf-20260729-1';
+var CACHE_EPOCH = 'account-sync-20260805-1';
 
 (function resetOldFrontendCache() {
   try {
@@ -702,7 +702,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=multi-plant-alarm-hf-20260729-1', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=account-sync-20260805-1', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
