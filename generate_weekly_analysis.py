@@ -202,6 +202,11 @@ def special_case_action_rows(known_plants: set[str]) -> list[dict[str, Any]]:
             "action": clean,
             "level": "WARNING",
         })
+    # Use ALL when an item applies to every plant rather than a named subset.
+    for row in rows:
+        if row["plant"] == "\u5168\u5ee0":
+            row["plant"] = "ALL"
+
     return rows
 
 
