@@ -27,6 +27,7 @@ def excluded_alarm_description(description: object) -> bool:
         or "變頻回授" in text
         or ("區" in text and "溫度" in text)
         or ("區" in text and any(term in text for term in ("溼度", "濕度")))
+        or any(term in text for term in ("陽塔", "陰塔"))
         or "L" in text
         or "H" in text
     )
