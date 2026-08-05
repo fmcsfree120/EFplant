@@ -309,7 +309,7 @@ def build_kf1_alarm_dashboard(script_dir: str, plant: str = "KF1") -> str:
             width = max(3, int(row["RISK"] / risk_max * 100))
             risk_rows.append(f"""
         <div class="alarm-risk-row">
-          <div class="alarm-risk-head"><span>{html.escape(row['ALM_DESCR'] or row['ALM_TAGNAME'])}</span><b>{int(row['RISK'])} pts</b></div>
+          <div class="alarm-risk-head"><span>{html.escape(row['ALM_DESCR'] or row['ALM_TAGNAME'])}</span></div>
           <div class="alarm-risk-tag">{html.escape(row['ALM_TAGNAME'])} · {int(row['EVENTS'])} 筆 · Critical {int(row['CRITICAL'])}</div>
           <div class="alarm-bar"><i style="width:{width}%"></i></div>
         </div>""")
@@ -818,7 +818,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'recovery-transition-20260805-1';
+var CACHE_EPOCH = 'hide-alarm-points-20260805-1';
 
 (function resetOldFrontendCache() {
   try {
@@ -1125,7 +1125,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=recovery-transition-20260805-1', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=hide-alarm-points-20260805-1', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
