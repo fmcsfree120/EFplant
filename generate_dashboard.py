@@ -824,7 +824,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'hj2-quality-trends-20260806-1';
+var CACHE_EPOCH = 'hj2-quality-trends-20260806-2';
 
 (function resetOldFrontendCache() {
   try {
@@ -1371,9 +1371,9 @@ def classify_quality_row(tagname, eqname, plant="", description=""):
     plant_code = str(plant).strip().upper()
 
     # HJ2 的五支集塵差壓計使用 FIX.* 歷史 Tag，名稱不含可供通用規則辨識的
-    # 「靜壓」字樣；明確上架為設備差壓，不能讓品質趨勢資料悄悄遺漏。
+    # 「靜壓」字樣；明確上架到既有的排氣靜壓頁籤，不能讓品質趨勢資料悄悄遺漏。
     if plant_code == "HJ2" and tag in _HJ2_DIFFERENTIAL_PRESSURE_TAGS:
-        return ("設備差壓", "HJ2 集塵差壓")
+        return ("排氣靜壓", "HJ2 集塵差壓")
 
     # HJ2 放流前 pH 的設備名稱在部分來源會有字碼差異，Tag 是穩定識別值。
     if plant_code == "HJ2" and tag == "HJ2.WAT_PH.F_CV":
