@@ -125,7 +125,7 @@ def filter_alarm_records(frame: pd.DataFrame) -> pd.DataFrame:
         return frame.loc[~excluded].copy()
     plants = frame[PLANT_COLUMN].fillna("").astype(str).str.strip().str.upper()
     action_plant = plants.isin(ACTION_ALARM_PLANTS)
-    # S2's approved action-alarm scope excludes all low-side tags (``_L``).
-    s2_low_side = plants.eq("S2") & frame[ALARM_TAG_COLUMN].fillna("").astype(str).str.upper().str.contains("_L", regex=False)
-    keep = ((~action_plant & ~excluded) | (action_plant & action_point)) & ~s2_low_side
+    # S2過濾條款：排除所有低側／高側 tag（``_L``、``_H``）。
+    s2_filter_clause = plants.eq("S2") & frame[ALARM_TAG_COLUMN].fillna("").astype(str).str.upper().str.contains(r"_(?:L|H)", regex=True)
+    keep = ((~action_plant & ~excluded) | (action_plant & action_point)) & ~s2_filter_clause
     return frame.loc[keep].copy()
