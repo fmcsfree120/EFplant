@@ -6,6 +6,21 @@ import pandas as pd
 
 
 ALARM_DESCRIPTION_COLUMN = "ALM_DESCR"
+PLANT_COLUMN = "PLANT"
+
+# Alarm points in the supplied S2A/T2A action-alarm lists must always remain
+# visible in operational-risk calculations.  UL3 is the historical tag prefix
+# for the LC3 dashboard plant.  The supplied UPW.UPW... action-alarm tags
+# belong to S2; S2 is already covered by this plant-wide exemption.
+ACTION_ALARM_PLANTS = frozenset({
+    "S2", "S2A", "S3", "T2A", "HJ1", "HJ2", "PCB", "LC3",
+})
+
+
+def canonical_alarm_plant(plant: object) -> str:
+    """Return the dashboard-compatible plant label for an alarm row."""
+    value = "" if pd.isna(plant) else str(plant).strip().upper()
+    return "KF1" if value == "KF" else value
 
 
 def excluded_alarm_description(description: object) -> bool:
@@ -34,8 +49,15 @@ def excluded_alarm_description(description: object) -> bool:
 
 
 def filter_alarm_records(frame: pd.DataFrame) -> pd.DataFrame:
-    """Exclude SOP-defined alarms by description without mutating ``frame``."""
+    """Apply SOP exclusions except for action-alarm plants.
+
+    A frame without ``PLANT`` retains the conservative legacy behaviour so
+    callers cannot accidentally bypass the policy merely by omitting context.
+    """
     if frame.empty or ALARM_DESCRIPTION_COLUMN not in frame.columns:
         return frame.copy()
-    mask = frame[ALARM_DESCRIPTION_COLUMN].map(excluded_alarm_description)
-    return frame.loc[~mask].copy()
+    excluded = frame[ALARM_DESCRIPTION_COLUMN].map(excluded_alarm_description)
+    if PLANT_COLUMN not in frame.columns:
+        return frame.loc[~excluded].copy()
+    action_plant = frame[PLANT_COLUMN].map(canonical_alarm_plant).isin(ACTION_ALARM_PLANTS)
+    return frame.loc[~excluded | action_plant].copy()
