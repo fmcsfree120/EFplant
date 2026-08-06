@@ -288,7 +288,7 @@ def build_kf1_alarm_dashboard(script_dir: str, plant: str = "KF1") -> str:
                          CRITICAL=("ALM_ALMPRIORITY", lambda s: int((s == "CRITICAL").sum())),
                          RISK=("RISK_POINTS", "sum"),
                          LAST=("TIME", "max"))
-                    .sort_values(["RISK", "EVENTS"], ascending=False)
+                    .sort_values(["EVENTS", "RISK"], ascending=False)
                     .head(10))
 
         # 每日警報趨勢維持七日直條顯示，並納入每 30 分鐘同步的當日最新資料。
@@ -824,7 +824,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'alarm-event-share-20260806-1';
+var CACHE_EPOCH = 'alarm-event-order-20260806-1';
 
 (function resetOldFrontendCache() {
   try {
@@ -1131,7 +1131,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=alarm-event-share-20260806-1', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=alarm-event-order-20260806-1', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>

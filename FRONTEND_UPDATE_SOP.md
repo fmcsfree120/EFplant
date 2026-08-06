@@ -254,7 +254,8 @@ trend compilation, or frontend navigation generation.
   only individual recoveries lasting at least 30 minutes, rank by duration,
   and show up to 10 records without padding short-duration entries.
 - In the TOP 10 high-risk-equipment panel, each bar width is its alarm-event
-  count divided by the total event count of the currently ranked records.
+  count divided by the total event count of the currently ranked records; rows
+  are sorted by event count descending, then risk score descending.
 - Plants without a connected alarm table retain the standard pending section;
   missing source coverage must not be interpreted as zero alarms.
 - HF remains a required equipment navigation tab. Until equipment status is
