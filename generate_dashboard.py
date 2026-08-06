@@ -70,10 +70,13 @@ CATEGORIES = [
 ]
 
 
+RECOVERY_DISPLAY_MIN_SECONDS = 30 * 60
+
+
 def select_recovery_top_records(recovered: pd.DataFrame, limit: int = 10) -> pd.DataFrame:
-    """Return each tag's longest single recovery event, ranked by that duration."""
-    valid = recovered[recovered["RECOVERY_SECONDS"] >= 0].copy()
-    if valid.empty or not (valid["RECOVERY_SECONDS"] > 30 * 60).any():
+    """Return up to ``limit`` per-tag recovery records lasting at least 30 minutes."""
+    valid = recovered[recovered["RECOVERY_SECONDS"] >= RECOVERY_DISPLAY_MIN_SECONDS].copy()
+    if valid.empty:
         return valid.iloc[0:0]
     counts = valid.groupby("ALM_TAGNAME").size().rename("SEGMENTS")
     longest_indexes = valid.groupby("ALM_TAGNAME")["RECOVERY_SECONDS"].idxmax()
@@ -821,7 +824,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'alm-th-20260806-1';
+var CACHE_EPOCH = 'alarm-recovery-30m-20260806-1';
 
 (function resetOldFrontendCache() {
   try {
@@ -1128,7 +1131,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=alm-th-20260806-1', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=alarm-recovery-30m-20260806-1', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>

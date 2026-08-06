@@ -250,6 +250,9 @@ trend compilation, or frontend navigation generation.
   `latest_alarm_history_other_backup.csv`.
 - Every plant uses the same alarm-risk calculations and presentation, but the
   source frame must be filtered by `PLANT` before aggregation.
+- The TOP 10 alarm-recovery panel is shared by every connected plant: display
+  only individual recoveries lasting at least 30 minutes, rank by duration,
+  and show up to 10 records without padding short-duration entries.
 - Plants without a connected alarm table retain the standard pending section;
   missing source coverage must not be interpreted as zero alarms.
 - HF remains a required equipment navigation tab. Until equipment status is
