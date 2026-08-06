@@ -408,12 +408,40 @@ def push_to_github(commit_msg):
             cwd=SCRIPT_DIR, capture_output=True
         )
         if result.returncode == 0:
-            subprocess.run(["git", "push"], cwd=SCRIPT_DIR, check=True)
-            print("[OK] 成功推送到 GitHub！")
-        else:
+            print("[OK] 前端更新已提交，等待單一發布佇列。")
+        elif not has_unpushed_main_commits():
             print("[INFO] 內容無變動，略過推送。")
+            return
+
+        flush_pending_release()
     except Exception as e:
         print(f"[ERROR] GitHub 推送失敗: {e}")
+
+
+def has_unpushed_main_commits():
+    """Return True when local main contains commits not yet on origin/main."""
+    subprocess.run(["git", "fetch", "origin", "main"], cwd=SCRIPT_DIR, check=True)
+    result = subprocess.run(
+        ["git", "rev-list", "--count", "origin/main..HEAD"],
+        cwd=SCRIPT_DIR, text=True, capture_output=True, check=True,
+    )
+    return int(result.stdout.strip() or "0") > 0
+
+
+def flush_pending_release():
+    """Push only when the repository-local pre-push gate permits one release."""
+    if not has_unpushed_main_commits():
+        return False
+    try:
+        subprocess.run(["git", "push", "origin", "main"], cwd=SCRIPT_DIR, check=True)
+        print("[OK] 單一佇列已釋放，已推送待發布的前端更新。")
+        return True
+    except subprocess.CalledProcessError as exc:
+        # The pre-push hook uses exit 75 while an earlier Pages deploy is active.
+        if exc.returncode == 75:
+            print("[DEFERRED] Pages 正在部署；保留本機已提交更新，稍後自動重試。")
+            return False
+        raise
 
 
 # ── 備份資料重建（MSSQL 失敗但帳號異動時使用）────────────────────────────────
@@ -851,6 +879,9 @@ def main():
     # 註：趨勢資料時間戳仍以 floor('h') 對齊整點，故運轉率等趨勢圖 X 軸維持每小時、不受影響。
     schedule.every().hour.at(":00").do(fetch_data_and_update)
     schedule.every().hour.at(":30").do(fetch_data_and_update)
+    # A deferred auto-update is retried after the prior Pages deployment ends;
+    # this prevents a second push from cancelling the active deployment.
+    schedule.every(2).minutes.do(flush_pending_release)
 
     next_run = schedule.next_run()
     print(f"\n排程已設定：設備狀態與 KF1 廠區運行風險總覽每 30 分鐘同步更新。")

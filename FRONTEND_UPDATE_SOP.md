@@ -83,6 +83,26 @@ immediately. Do not leave a completed change only in source code or local
 generated files: regenerate, verify, commit, push, and verify the canonical
 Pages URL before reporting completion.
 
+### Single deployment queue
+
+GitHub Pages cancels an older deployment when a newer dynamic Pages request is
+queued for the same `main` branch. All releases must therefore use the
+repository-local release gate:
+
+- `.githooks/pre-push` calls `github_pages_release_gate.py` before every push.
+- If a `pages build and deployment` run is `queued` or `in_progress`, the push
+  is deferred with exit code 75; do not use **Re-run jobs** or manually request
+  another Pages build.
+- `main.py` retains its generated commit locally and retries pending
+  `origin/main..HEAD` commits every two minutes after the active deployment
+  finishes.
+- Manual releases must treat an exit-75 push as queued work: wait for the
+  automatic retry or run the same normal `git push origin main` once the gate
+  reports no active deployment. Never bypass the hook with `--no-verify`.
+
+This serializes the half-hour auto-update and human frontend releases without
+creating branches or changing the Pages publishing source.
+
 1. Confirm the intended frontend URL before doing any cache work.
 
 ```powershell

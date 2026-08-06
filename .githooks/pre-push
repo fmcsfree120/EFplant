@@ -1,0 +1,14 @@
+#!/bin/sh
+# Serialize all EFplant Pages releases.  A new push while Pages is deploying
+# cancels the earlier deploy, so defer the push and let main.py retry it.
+
+repo_root=$(git rev-parse --show-toplevel) || exit 1
+python_exe="$repo_root/.venv/Scripts/python.exe"
+
+if [ ! -x "$python_exe" ]; then
+  echo "[BLOCKED] EFplant release gate cannot find .venv/Scripts/python.exe." >&2
+  exit 2
+fi
+
+"$python_exe" "$repo_root/github_pages_release_gate.py"
+exit $?
