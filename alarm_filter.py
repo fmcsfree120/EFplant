@@ -123,6 +123,9 @@ def filter_alarm_records(frame: pd.DataFrame) -> pd.DataFrame:
     action_point = action_alarm_mask(frame)
     if PLANT_COLUMN not in frame.columns:
         return frame.loc[~excluded].copy()
-    action_plant = frame[PLANT_COLUMN].fillna("").astype(str).str.strip().str.upper().isin(ACTION_ALARM_PLANTS)
-    keep = (~action_plant & ~excluded) | (action_plant & action_point)
+    plants = frame[PLANT_COLUMN].fillna("").astype(str).str.strip().str.upper()
+    action_plant = plants.isin(ACTION_ALARM_PLANTS)
+    # S2's approved action-alarm scope excludes all low-side tags (``_L``).
+    s2_low_side = plants.eq("S2") & frame[ALARM_TAG_COLUMN].fillna("").astype(str).str.upper().str.contains("_L", regex=False)
+    keep = ((~action_plant & ~excluded) | (action_plant & action_point)) & ~s2_low_side
     return frame.loc[keep].copy()

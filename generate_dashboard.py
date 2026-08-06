@@ -821,7 +821,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'action-alarm-whitelist-20260806-3';
+var CACHE_EPOCH = 's2-low-tag-exclusion-20260806-4';
 
 (function resetOldFrontendCache() {
   try {
@@ -1128,7 +1128,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=action-alarm-whitelist-20260806-3', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=s2-low-tag-exclusion-20260806-4', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
