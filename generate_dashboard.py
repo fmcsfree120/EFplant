@@ -824,7 +824,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'hj2-quality-trends-20260806-2';
+var CACHE_EPOCH = 'hj2-static-classification-20260806-1';
 
 (function resetOldFrontendCache() {
   try {
@@ -1131,7 +1131,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=alarm-event-order-20260806-1', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=hj2-static-classification-20260806-1', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
@@ -1355,8 +1355,14 @@ def power_series_label(plant, eqname, tagname="", description=""):
     return plant
 
 
-_HJ2_DIFFERENTIAL_PRESSURE_TAGS = {
-    "FIX.N7124.F_CV", "FIX.N734.F_CV", "FIX.N74.F_CV", "FIX.N764.F_CV", "FIX.N794.F_CV",
+# HJ2 的 FIX.* 歷史 Tag 沒有可供通用規則判讀的「靜壓」文字；依設備型式
+# 映射到既有跨廠區圖表，絕不可合併成 HJ2 專屬圖。
+_HJ2_STATIC_PRESSURE_TAGS = {
+    "FIX.N734.F_CV": "酸排氣靜壓",     # ASCRA002
+    "FIX.N764.F_CV": "酸排氣靜壓",     # ASCRA003
+    "FIX.N74.F_CV": "鹼排氣靜壓",      # BSCRA001
+    "FIX.N7124.F_CV": "乾式集塵靜壓",  # DUSTA004
+    "FIX.N794.F_CV": "乾式集塵靜壓",   # DUSTA005
 }
 
 
@@ -1370,10 +1376,10 @@ def classify_quality_row(tagname, eqname, plant="", description=""):
     eq = str(eqname)
     plant_code = str(plant).strip().upper()
 
-    # HJ2 的五支集塵差壓計使用 FIX.* 歷史 Tag，名稱不含可供通用規則辨識的
-    # 「靜壓」字樣；明確上架到既有的排氣靜壓頁籤，不能讓品質趨勢資料悄悄遺漏。
-    if plant_code == "HJ2" and tag in _HJ2_DIFFERENTIAL_PRESSURE_TAGS:
-        return ("排氣靜壓", "HJ2 集塵差壓")
+    # HJ2 五支 FIX.* 歷史 Tag 明確併入既有酸排、鹼排、乾式集塵靜壓圖表，
+    # 與其他廠區依設備型式分類的原則一致。
+    if plant_code == "HJ2" and tag in _HJ2_STATIC_PRESSURE_TAGS:
+        return ("排氣靜壓", _HJ2_STATIC_PRESSURE_TAGS[tag])
 
     # HJ2 放流前 pH 的設備名稱在部分來源會有字碼差異，Tag 是穩定識別值。
     if plant_code == "HJ2" and tag == "HJ2.WAT_PH.F_CV":
