@@ -309,15 +309,15 @@ def build_kf1_alarm_dashboard(script_dir: str, plant: str = "KF1") -> str:
         hourly = (alarms.assign(HOUR=alarms["TIME"].dt.hour)
                         .groupby("HOUR").size().reindex(range(24), fill_value=0))
 
-        risk_max = max(int(risk["RISK"].max()) if not risk.empty else 1, 1)
+        ranked_event_total = int(risk["EVENTS"].sum()) if not risk.empty else 0
         risk_rows = []
         for _, row in risk.iterrows():
-            width = max(3, int(row["RISK"] / risk_max * 100))
+            width = (float(row["EVENTS"]) / ranked_event_total * 100) if ranked_event_total else 0
             risk_rows.append(f"""
         <div class="alarm-risk-row">
           <div class="alarm-risk-head"><span>{html.escape(row['ALM_DESCR'] or row['ALM_TAGNAME'])}</span></div>
           <div class="alarm-risk-tag">{html.escape(row['ALM_TAGNAME'])} · {int(row['EVENTS'])} 筆 · Critical {int(row['CRITICAL'])}</div>
-          <div class="alarm-bar"><i style="width:{width}%"></i></div>
+          <div class="alarm-bar"><i style="width:{width:.1f}%"></i></div>
         </div>""")
 
         daily_max = max(int(daily["TOTAL"].max()) if not daily.empty else 1, 1)
@@ -824,7 +824,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'alarm-recovery-30m-20260806-1';
+var CACHE_EPOCH = 'alarm-event-share-20260806-1';
 
 (function resetOldFrontendCache() {
   try {
@@ -1131,7 +1131,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=alarm-recovery-30m-20260806-1', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=alarm-event-share-20260806-1', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
