@@ -824,7 +824,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'alarm-event-order-20260806-1';
+var CACHE_EPOCH = 'hj2-quality-trends-20260806-1';
 
 (function resetOldFrontendCache() {
   try {
@@ -1355,6 +1355,11 @@ def power_series_label(plant, eqname, tagname="", description=""):
     return plant
 
 
+_HJ2_DIFFERENTIAL_PRESSURE_TAGS = {
+    "FIX.N7124.F_CV", "FIX.N734.F_CV", "FIX.N74.F_CV", "FIX.N764.F_CV", "FIX.N794.F_CV",
+}
+
+
 def classify_quality_row(tagname, eqname, plant="", description=""):
     """趨勢圖資料分類唯一入口。回傳 (category, series_name)：
       category    : '大宗化學品' | '空壓效率' | '冰機效率' | '廠區用電' | '排氣靜壓' | None
@@ -1363,6 +1368,16 @@ def classify_quality_row(tagname, eqname, plant="", description=""):
     """
     tag = str(tagname).upper()
     eq = str(eqname)
+    plant_code = str(plant).strip().upper()
+
+    # HJ2 的五支集塵差壓計使用 FIX.* 歷史 Tag，名稱不含可供通用規則辨識的
+    # 「靜壓」字樣；明確上架為設備差壓，不能讓品質趨勢資料悄悄遺漏。
+    if plant_code == "HJ2" and tag in _HJ2_DIFFERENTIAL_PRESSURE_TAGS:
+        return ("設備差壓", "HJ2 集塵差壓")
+
+    # HJ2 放流前 pH 的設備名稱在部分來源會有字碼差異，Tag 是穩定識別值。
+    if plant_code == "HJ2" and tag == "HJ2.WAT_PH.F_CV":
+        return ("廢水處理", "出口pH")
 
     # ── ① 大宗化學品（最優先）─────────────────────────────────────────────
     # Convention A：EQNAME 標示「大宗化學品」，化學品名稱嵌於 TAGNAME (..._<NAME>_TANK_...)
@@ -1524,6 +1539,8 @@ def compile_quality_data(script_dir, force_base_time=None):
     power_actual_data = {}
     # 排氣靜壓 data: key = (圖表名稱, 廠區-設備編號, hr_str) -> value
     static_actual_data = {}
+    # 設備差壓 data: key = (圖表名稱, 廠區-設備編號, hr_str) -> value
+    dp_actual_data = {}
     # 供應水質 data: key = (圖表名稱, label, hr_str) -> value（label=廠區+量測點位置）
     water_actual_data = {}
     # 廢水處理 data: key = (圖表名稱, label, hr_str) -> value
@@ -1577,6 +1594,12 @@ def compile_quality_data(script_dir, force_base_time=None):
                 if series_name:
                     label = static_series_label(plant, eqname, tagname)
                     static_actual_data[(series_name, label, hr_str)] = abs(float(row['VALUE']))
+                continue
+
+            if category == "設備差壓":
+                if series_name:
+                    label = f"{plant} {eqname}"
+                    dp_actual_data[(series_name, label, hr_str)] = float(row['VALUE'])
                 continue
 
             if category == "供應水質":
@@ -1736,6 +1759,18 @@ def compile_quality_data(script_dir, force_base_time=None):
                     series[label].append(None)
         static_series[f"static_{sn}"] = series
 
+    # 設備差壓個別圖表（目前 HJ2 FIX.* 集塵差壓計）；各設備為獨立曲線。
+    dp_names = sorted(set(k[0] for k in dp_actual_data))
+    dp_series = {}
+    for dn in dp_names:
+        labels = sorted({k[1] for k in dp_actual_data if k[0] == dn}, key=_label_sort_key)
+        series = {label: [] for label in labels}
+        for hr_str in timestamps:
+            for label in labels:
+                key = (dn, label, hr_str)
+                series[label].append(round(dp_actual_data[key], 2) if key in dp_actual_data else None)
+        dp_series[f"dp_{dn}"] = series
+
     # ── 建立供應水質/廢水處理 series（label = 廠區 或 廠區+量測點位置）──────────
     def _build_label_series(actual):
         names = sorted(set(k[0] for k in actual))
@@ -1773,6 +1808,7 @@ def compile_quality_data(script_dir, force_base_time=None):
     }
     metrics.update(chem_series)
     metrics.update(static_series)
+    metrics.update(dp_series)
     metrics.update(water_series)
     metrics.update(waste_series)
 
@@ -1781,6 +1817,7 @@ def compile_quality_data(script_dir, force_base_time=None):
         "metrics": metrics,
         "chem_names": chem_names,
         "static_names": static_names,
+        "dp_names": dp_names,
         "water_names": water_names,
         "waste_names": waste_names
     }
@@ -2163,6 +2200,7 @@ def create_status_dashboard(df: pd.DataFrame, output_path: str = "index.html"):
     chart_series_json = json.dumps(chart_data["metrics"], ensure_ascii=False)
     chem_names_json = json.dumps(chart_data.get("chem_names", []), ensure_ascii=False)
     static_names_json = json.dumps(chart_data.get("static_names", []), ensure_ascii=False)
+    dp_names_json = json.dumps(chart_data.get("dp_names", []), ensure_ascii=False)
     water_names_json = json.dumps(chart_data.get("water_names", []), ensure_ascii=False)
     waste_names_json = json.dumps(chart_data.get("waste_names", []), ensure_ascii=False)
 
@@ -2428,6 +2466,7 @@ def create_status_dashboard(df: pd.DataFrame, output_path: str = "index.html"):
     <button class="tab-btn" id="tab-rr" onclick="switchMetric('運轉率', this)">運轉率</button>
     <button class="tab-btn active" id="tab-energy" onclick="switchMetric('能源效率', this)">能源效率</button>
     <button class="tab-btn" onclick="switchMetric('排氣靜壓', this)">排氣靜壓</button>
+    <button class="tab-btn" onclick="switchMetric('設備差壓', this)">設備差壓</button>
     <button class="tab-btn" onclick="switchMetric('大宗化學品', this)">大宗化學品</button>
     <button class="tab-btn" onclick="switchMetric('供應水質', this)">供應水質</button>
     <button class="tab-btn" onclick="switchMetric('廢水處理', this)">廢水處理</button>
@@ -2532,6 +2571,8 @@ def create_status_dashboard(df: pd.DataFrame, output_path: str = "index.html"):
   <div id="trend-chem-container" style="display:none;"></div>
   <!-- 排氣靜壓動態圖表容器 -->
   <div id="trend-static-container" style="display:none;"></div>
+  <!-- 設備差壓個別圖表 -->
+  <div id="trend-dp-container" style="display:none;"></div>
   <!-- 供應水質動態圖表容器 -->
   <div id="trend-water-container" style="display:none;"></div>
   <!-- 廢水處理動態圖表容器 -->
@@ -3456,6 +3497,7 @@ var chartTimestamps = {chart_timestamps_json};
 var chartSeriesData = {chart_series_json};
 var chemNames = {chem_names_json};
 var staticNames = {static_names_json};
+var dpNames = {dp_names_json};
 var waterNames = {water_names_json};
 var wasteNames = {waste_names_json};
 // 化學品圖表標題顯示名稱對照（合併鍵 → 顯示標題；不影響內部 key/合併）。
@@ -3916,6 +3958,13 @@ function renderStaticCharts() {{
   }});
 }}
 
+function renderDifferentialPressureCharts() {{
+  renderMultiCharts({{
+    names: dpNames, prefix: 'dp_', container: 'trend-dp-container',
+    titleSuffix: ' 趨勢圖', subtitleSuffix: ' 設備差壓變化'
+  }});
+}}
+
 function renderWaterCharts() {{
   renderMultiCharts({{
     names: waterNames, prefix: 'water_', container: 'trend-water-container',
@@ -3945,6 +3994,7 @@ function switchMetric(metric, btn) {{
   var wipCard = document.getElementById('trend-wip');
   var chemContainer = document.getElementById('trend-chem-container');
   var staticContainer = document.getElementById('trend-static-container');
+  var dpContainer = document.getElementById('trend-dp-container');
   var waterContainer = document.getElementById('trend-water-container');
   var wasteContainer = document.getElementById('trend-waste-container');
 
@@ -3955,6 +4005,7 @@ function switchMetric(metric, btn) {{
   if (wipCard) wipCard.style.display = 'none';
   if (chemContainer) chemContainer.style.display = 'none';
   if (staticContainer) staticContainer.style.display = 'none';
+  if (dpContainer) dpContainer.style.display = 'none';
   if (waterContainer) waterContainer.style.display = 'none';
   if (wasteContainer) wasteContainer.style.display = 'none';
   _syncTopBtn();
@@ -3977,6 +4028,14 @@ function switchMetric(metric, btn) {{
     if (staticContainer) staticContainer.style.display = 'block';
     currentMetric = metric;
     renderStaticCharts();
+    _syncTopBtn();
+    return;
+  }}
+
+  if (metric === '設備差壓') {{
+    if (dpContainer) dpContainer.style.display = 'block';
+    currentMetric = metric;
+    renderDifferentialPressureCharts();
     _syncTopBtn();
     return;
   }}
