@@ -116,8 +116,13 @@ def excluded_alarm_description(description: object) -> bool:
 
 
 def filter_alarm_records(frame: pd.DataFrame) -> pd.DataFrame:
-    """Apply SOP exclusions, retaining action-alarm points over 80% similar."""
+    """Apply the action-list whitelist, then legacy exclusions elsewhere."""
     if frame.empty or ALARM_DESCRIPTION_COLUMN not in frame.columns:
         return frame.copy()
     excluded = frame[ALARM_DESCRIPTION_COLUMN].map(excluded_alarm_description)
-    return frame.loc[~excluded | action_alarm_mask(frame)].copy()
+    action_point = action_alarm_mask(frame)
+    if PLANT_COLUMN not in frame.columns:
+        return frame.loc[~excluded].copy()
+    action_plant = frame[PLANT_COLUMN].fillna("").astype(str).str.strip().str.upper().isin(ACTION_ALARM_PLANTS)
+    keep = (~action_plant & ~excluded) | (action_plant & action_point)
+    return frame.loc[keep].copy()

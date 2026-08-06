@@ -22,8 +22,8 @@ from typing import Any
 
 import pandas as pd
 
-
 from alarm_filter import filter_alarm_records
+
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -42,20 +42,28 @@ OUT_JSON = BASE_DIR / "_weekly_analysis.json"
 MEMORY_JSON = BASE_DIR / "weekly_report_memory.json"
 OPENAI_KEY_PATH = BASE_DIR / "openaiKEY.txt"
 SPECIAL_CASE_TXT = BASE_DIR / "specialcase-weekly.txt"
+METRIC_LABELS = {
+    "resistance": "超純水水阻",
+    "conductivity": "純水出水導電度",
+    "ph": "廢水 pH",
+    "chiller": "冰機能耗效率",
+    "compressor": "空壓能耗效率",
+    "pressure": "排氣／集塵靜壓",
+    "general": "其他廠務趨勢",
+}
 LOCAL_CONTEXT_DIR = BASE_DIR / "localcontext"
 LOCAL_CONTEXT_MD = LOCAL_CONTEXT_DIR / "weekly_report_api_context.md"
 API_PROMPT_MD = LOCAL_CONTEXT_DIR / "weekly_report_api_prompt.md"
 LOCAL_CONTEXT_RETENTION_DAYS = 31
 OPENAI_MODEL = "gpt-4o-mini"
+# 管理週報的對外論述由本地規則完整產生；API 僅保留為未啟用的人工審稿備援。
+API_REPORT_REWRITE_ENABLED = True
 
 SEMICONDUCTOR_FACILITY_REFERENCE = """
 半導體廠務技術參照摘要：
-1. UPW/DI：半導體製程以超純水清洗晶圓、稀釋化學品及支援關鍵冷卻；水阻接近 18.18 MΩ·cm 代表離子污染低，水阻下降或導電度上升需優先聯想到離子突破、樹脂/RO/EDI 效能、取樣管路 CO2 滲入或支管污染。
+1. UPW/DI：半導體製程以超純水清洗晶圓及支援關鍵製程；水阻下降或導電度上升需優先聯想到離子突破、樹脂/RO/EDI 效能、取樣管路 CO2 滲入或支管污染。
 2. UPW 品質風險：粒子、TOC、金屬離子、矽與微生物會造成晶圓缺陷或製程變異；若水質異常，建議行動需包含儀表校正、POD/POC 交叉採樣、耗材狀態與支管沖洗。
-3. 冰機/冷卻水：KW/RT 偏高通常與冷凝器結垢、冷卻水溫差不足、冷卻塔散熱不佳、冷媒量、負載分配或旁通控制有關；建議行動優先檢查 Approach、ΔT、流量、冷卻水水質與主機負載率。
-4. 空壓/CDA：CMM/kWh 偏低常見原因包含洩漏、壓力設定過高、乾燥機壓損、濾芯堵塞、進氣溫度偏高、卸載運轉或多機負載分配不佳；建議先查壓力、露點、洩漏與耗氣尖峰。
-5. 廢水/pH：pH 偏離需聯想到酸鹼廢液負荷、加藥泵、pH 電極校正、攪拌與中和槽停留時間；表述需同時注意排放合規與對後段處理的衝擊。
-6. FMCS/資料完整性：資料中斷或回傳不足會形成監控盲區；建議行動需包含 PLC/SCADA 通訊、網路節點、資料匯入排程與現場趨勢交叉確認。
+3. 廢水/pH：pH 偏離自身歷史水準需聯想到酸鹼廢液負荷、加藥泵、pH 電極校正、攪拌與中和槽停留時間。
 資料來源參照：SEMI/ASTM UPW 指南摘要、DOE 壓縮空氣與冰水系統節能實務、半導體廠常見 UPW/CDA/HVAC/廢水廠務維運經驗。
 """
 
@@ -79,6 +87,7 @@ DATA_GAP_MIN_HOURS = 1.0
 FLATLINE_MIN_HOURS = 48.0
 ZERO_MIN_HOURS = 4.0
 ALARM_CONNECTED_PLANTS = {"KF1", "HF", "HJ1", "HJ2", "LC2", "LC3", "PCB", "S2", "S2A", "S3", "T2A"}
+EXCLUDED_REPORT_TERMS = ("冰機", "冰水主機", "空壓", "CDA", "供藥", "化學", "H2SO4", "H2O2", "HNO3", "HCL", "NaOH", "Na2CO3", "MGCB")
 
 
 @dataclass
@@ -198,15 +207,15 @@ def special_case_action_rows(known_plants: set[str]) -> list[dict[str, Any]]:
         rows.append({
             "priority": "",
             "plant": "/".join(matched) if matched else "全廠",
-            "item": "本週特殊情況",
+            "item": "本週異常事件清單",
             "action": clean,
             "level": "WARNING",
         })
-    # Use ALL when an item applies to every plant rather than a named subset.
+    # Use a concise, language-neutral label when a special case applies to
+    # every plant rather than a named subset.
     for row in rows:
         if row["plant"] == "\u5168\u5ee0":
             row["plant"] = "ALL"
-
     return rows
 
 
@@ -234,7 +243,7 @@ def compact_report_for_context(report: dict[str, Any]) -> dict[str, Any]:
         "overview": report.get("overview", {}),
         "top3": report.get("top3", [])[:3],
         "trend_warnings": report.get("trend_warnings", [])[:5],
-        "health_scores": report.get("health_scores", []),
+        "trend_rankings": report.get("trend_rankings", []),
         "actions": report.get("actions", [])[:5],
     }
 
@@ -243,34 +252,40 @@ def build_api_prompt_markdown() -> str:
     return f"""# EFplant 週報文字生成 API Prompt
 
 ## 角色
-你是半導體廠務 FMCS 週報文字編修助手，負責把 Python 規則已判定的異常、等級、趨勢與數值，改寫成主管週報可直接閱讀的文字。
+你是半導體廠務 FMCS 週報評判描述生成器。Python 提供資料、排序與等級骨架；本次測試要求所有對外評判描述由 API 生成。管理週報只聚焦純水、廢水及其他保留的製造供應品質趨勢。
 
 ## 固定技術參照
 {SEMICONDUCTOR_FACILITY_REFERENCE.strip()}
 
-## 生成範圍
-- 本週重點 TOP3：event、impact、action。
-- 本週異常事件清單：phenomenon、impact。
-- 未來風險預警：forecast。
-- 各廠區健康度評分：advantage、weakness。
-- 管理建議與追蹤事項：action。
+## API 權限範圍
+- 本次測試 API 負責 TOP3、事件、趨勢預警、廠區排序描述、最佳／待改善描述、警報摘要與管理行動的評判文字。
+- 不得改 rank、plant、item、metric、current、target、trend、level、status，也不得新增或刪除列。
+- value、abnormal、critical、active_high、detail 中的數字與事實不可改動，只能將文字改寫為主管報告語氣。
+- 只可根據輸入數值與前段／近期比較生成文字，不得引入資料中斷、覆蓋率、冰機、空壓、化學品供應或運轉率內容。
+
+## 報告主軸與取捨
+- 只比較近期三日與同一張趨勢圖前段四日的歷史水準，說明偏離方向、幅度及其對製造供應穩定度的意義。
+- 不得引用管制界線、法規界線或固定目標作為優劣排序依據。
+- TOP3、異常事件、趨勢預警與管理建議只處理純水、廢水及保留的製造供應品質指標。
+- 資料品質問題只放在資料品質附表作為維護資訊；除非已能證明造成製造供應中斷，否則不得上升為主管摘要主軸。
+- 不得把「資料筆數多寡」誤寫為「製造供應品質好壞」。
 
 ## 管理建議與追蹤事項中的廠區例外情況
 - 部分 actions 列的 item 為「本週特殊情況」，代表現場人員本週在 specialcase-weekly.txt 手動登記的例外情況，屬本週資料的一部分。
 - 這類 action 文字必須修飾為主管週報語氣，只能改寫語氣與用詞，不得刪減原始事實，也不得新增登記內容沒有提到的臆測原因，不可搬移到其他 plant。
 
 ## 不可變更
-- 不得改 rank、priority、date、plant、item、metric、current、target、trend、level、score、status。
+- 不得改 rank、priority、date、plant、item、metric、current、target、trend、level、status。
 - 不得新增或刪除列。
 - 不得新增本週資料沒有支持的事實。
 - 每個判斷必須能回推到輸入 JSON 的數值、等級或趨勢。
-- 警報資料涵蓋不足本身屬於監控風險，不得寫成「不評分」或解讀為零警報。
-- 不主動產生「運轉率不計分」等制度說明；運轉率低於 50% 時，只依 Python 既有列在管理建議中描述現象。
+- 全報告不使用任何分數、加權或分數區間；只呈現由上至下的相對優劣順位。
+- 不得提及資料中斷、資料覆蓋率、冰機、空壓、化學品供應或運轉率。
 
 ## 文字要求
 - 繁體中文。
 - 主管週報語氣，短、具體、可執行。
-- 優先使用半導體廠務語彙：UPW、水阻、導電度、CDA、冰機 KW/RT、冷卻水、廢水中和、FMCS、SCADA。
+- 優先使用半導體廠務語彙：UPW、水阻、導電度、廢水中和、FMCS、SCADA。
 - 不寫空泛句，例如「持續關注」、「加強管理」；需指出查核對象或下一步。
 - 浮點數小數點後無意義的尾端 0 不顯示。
 - 只輸出 JSON。
@@ -309,10 +324,10 @@ def format_report_markdown(report: dict[str, Any]) -> str:
             f"- 建議行動: {item.get('action')}",
         ])
     lines.append("")
-    lines.append("## 各廠區健康度評分")
-    for item in report.get("health_scores", []):
+    lines.append("## 各廠區趨勢表現排序")
+    for item in report.get("trend_rankings", []):
         lines.extend([
-            f"### {item.get('rank')}. {item.get('plant')} - {item.get('score')} ({item.get('status')})",
+            f"### {item.get('rank')}. {item.get('plant')} ({item.get('status')})",
             f"- 主要優勢: {item.get('advantage')}",
             f"- 主要弱點: {item.get('weakness')}",
         ])
@@ -437,17 +452,16 @@ def report_text_payload(report: dict[str, Any]) -> dict[str, Any]:
             }
             for idx, row in enumerate(report.get("trend_warnings", []))
         ],
-        "health_scores": [
+        "trend_rankings": [
             {
                 "idx": idx,
                 "rank": row.get("rank"),
                 "plant": row.get("plant"),
-                "score": row.get("score"),
                 "advantage": row.get("advantage"),
                 "weakness": row.get("weakness"),
                 "status": row.get("status"),
             }
-            for idx, row in enumerate(report.get("health_scores", []))
+            for idx, row in enumerate(report.get("trend_rankings", []))
         ],
         "actions": [
             {
@@ -459,6 +473,22 @@ def report_text_payload(report: dict[str, Any]) -> dict[str, Any]:
                 "level": row.get("level"),
             }
             for idx, row in enumerate(report.get("actions", []))
+        ],
+        "best_performers": [
+            {"idx": idx, "metric": row.get("metric"), "plant": row.get("plant"), "data_point": row.get("data_point"), "value": row.get("value")}
+            for idx, row in enumerate(report.get("best_performers", []))
+        ],
+        "worst_areas": [
+            {"idx": idx, "metric": row.get("metric"), "plant": row.get("plant"), "data_point": row.get("data_point"), "value": row.get("value")}
+            for idx, row in enumerate(report.get("worst_areas", []))
+        ],
+        "alarm_risk": [
+            {"idx": idx, "plant": row.get("plant"), "abnormal": row.get("abnormal"), "critical": row.get("critical"), "active_high": row.get("active_high"), "top_risk": row.get("top_risk"), "status": row.get("status")}
+            for idx, row in enumerate(report.get("alarm_risk", []))
+        ],
+        "data_quality": [
+            {"idx": idx, "plant": row.get("plant"), "type": row.get("type"), "point": row.get("point"), "detail": row.get("detail"), "level": row.get("level")}
+            for idx, row in enumerate(report.get("data_quality", []))
         ],
     }
 
@@ -484,7 +514,7 @@ def polish_weekly_report_text_with_openai(report: dict[str, Any]) -> bool:
     api_key = read_openai_api_key()
     if not api_key:
         return False
-    if not any(report.get(k) for k in ("top3", "events", "trend_warnings", "health_scores", "actions")):
+    if not any(report.get(k) for k in ("top3", "events", "trend_warnings", "trend_rankings", "actions")):
         return False
 
     write_api_prompt_file()
@@ -498,12 +528,17 @@ def polish_weekly_report_text_with_openai(report: dict[str, Any]) -> bool:
             "role": "system",
             "content": (
                 build_api_prompt_markdown()
+                + "\n硬性規則：禁止使用『未見明顯』『沒有明顯』等空泛句型；每個判定必須帶數字、百分比、項目數或資料筆數。所有 metric、item、status 與表格欄位必須使用繁體中文（pH、UPW、CDA、Tag 代碼可保留）。"
                 + "\n輸出格式："
                 + "{\"top3\":[{\"idx\":0,\"event\":\"...\",\"impact\":\"...\",\"action\":\"...\"}],"
                 + "\"events\":[{\"idx\":0,\"phenomenon\":\"...\",\"impact\":\"...\"}],"
                 + "\"trend_warnings\":[{\"idx\":0,\"forecast\":\"...\"}],"
-                + "\"health_scores\":[{\"idx\":0,\"advantage\":\"...\",\"weakness\":\"...\"}],"
-                + "\"actions\":[{\"idx\":0,\"action\":\"...\"}]}"
+                + "\"trend_rankings\":[{\"idx\":0,\"advantage\":\"...\",\"weakness\":\"...\"}],"
+                + "\"actions\":[{\"idx\":0,\"action\":\"...\"}],"
+                + "\"best_performers\":[{\"idx\":0,\"value\":\"...\"}],"
+                + "\"worst_areas\":[{\"idx\":0,\"value\":\"...\"}],"
+                + "\"alarm_risk\":[{\"idx\":0,\"top_risk\":\"...\"}],"
+                + "\"data_quality\":[{\"idx\":0,\"detail\":\"...\"}]}"
             ),
         },
         {
@@ -523,8 +558,12 @@ def polish_weekly_report_text_with_openai(report: dict[str, Any]) -> bool:
         ("top3", ["event", "impact", "action"]),
         ("events", ["phenomenon", "impact"]),
         ("trend_warnings", ["forecast"]),
-        ("health_scores", ["advantage", "weakness"]),
+        ("trend_rankings", ["advantage", "weakness"]),
         ("actions", ["action"]),
+        ("best_performers", ["value"]),
+        ("worst_areas", ["value"]),
+        ("alarm_risk", ["top_risk"]),
+        ("data_quality", ["detail"]),
     ]
     for section, fields in update_specs:
         rows = report.get(section, [])
@@ -538,6 +577,37 @@ def polish_weekly_report_text_with_openai(report: dict[str, Any]) -> bool:
             if 0 <= idx < len(rows):
                 changed = set_text_if_present(rows[idx], update, fields) or changed
     return changed
+
+
+def narrative_ownership_metrics(report: dict[str, Any]) -> dict[str, Any]:
+    """Quantify ownership by externally visible narrative fields stored in JSON."""
+    field_map = {
+        "top3": ("event", "impact", "action", "explanation"),
+        "events": ("phenomenon", "impact", "explanation"),
+        "trend_warnings": ("forecast", "explanation"),
+        "trend_rankings": ("advantage", "weakness"),
+        "best_performers": ("value",),
+        "worst_areas": ("value",),
+        "actions": ("action", "explanation"),
+        "alarm_risk": ("top_risk",),
+        "data_quality": ("detail",),
+    }
+    total = sum(
+        1
+        for section, fields in field_map.items()
+        for row in report.get(section, [])
+        for field in fields
+        if str(row.get(field, "")).strip()
+    )
+    api_owned = 0 if not API_REPORT_REWRITE_ENABLED else total
+    share = round(api_owned / total * 100.0, 1) if total else 0.0
+    return {
+        "measurement": "API可改寫的對外論述欄位數 ÷ 全部對外論述欄位數",
+        "total_narrative_fields": total,
+        "api_editable_fields": api_owned,
+        "local_rule_fields": total - api_owned,
+        "api_narrative_share_pct": share,
+    }
 
 
 def level_for(kind: str, value: float) -> str:
@@ -695,6 +765,15 @@ def is_pressure(eq: str, desc: str, tag: str) -> bool:
     return "靜壓" in text or "差壓" in text or "DPT" in text or "PIT" in text
 
 
+def is_general_facility_trend(eq: str, desc: str, tag: str) -> bool:
+    """Keep other numeric trend-chart signals, excluding run-rate/energy and
+    signals already assigned to a named quality or pressure family."""
+    text = f"{eq} {desc} {tag}"
+    excluded = ("運轉率", "能耗", "效率", "KW/RT", "CMM/KW", "CDA_CMM/KWH", "CHU_KW/RT")
+    named = (is_resistance, is_conductivity, is_ph, is_pressure)
+    return not any(word.lower() in text.lower() for word in excluded) and not any(fn(eq, desc, tag) for fn in named)
+
+
 def analyze_flatline_quality(df: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp) -> list[Issue]:
     """Find non-run-rate points whose value stayed unchanged for the whole week."""
     if df.empty:
@@ -771,9 +850,10 @@ def _is_analog_signal(group: pd.DataFrame) -> bool:
 
 
 def analyze_data_quality(
-    frames: list[pd.DataFrame], start: pd.Timestamp, end: pd.Timestamp
+    frames: list[pd.DataFrame], start: pd.Timestamp, end: pd.Timestamp,
+    expected_plants: set[str] | None = None,
 ) -> tuple[list[dict[str, Any]], list[Issue]]:
-    """Locate curve gaps, zero signals and rolling >=48 hour Keep Last segments."""
+    """Locate missing plants, curve gaps, zero signals and >=48 hour Keep Last segments."""
     rows: list[dict[str, Any]] = []
     issues: list[Issue] = []
     normalized: list[pd.DataFrame] = []
@@ -785,6 +865,34 @@ def analyze_data_quality(
         part = part.dropna(subset=["TIMESTAMP", "VALUE"])
         if not part.empty:
             normalized.append(part)
+    observed_plants = {
+        str(plant).strip()
+        for part in normalized
+        for plant in part["PLANT"].dropna().unique()
+    }
+    missing_plants = sorted(set(expected_plants or set()) - observed_plants)
+    period_hours = max(
+        1.0,
+        ((end.normalize() + pd.Timedelta(days=1)) - start.normalize()).total_seconds() / 3600,
+    )
+    for plant in missing_plants:
+        rows.append({
+            "plant": plant, "type": "整廠資料缺失", "point": "品質／設備監控資料",
+            "period": f"{start:%m/%d}～{end:%m/%d}",
+            "duration": f"{fmt_num(period_hours)} 小時", "detail": "分析期間內無任何有效資料",
+            "level": "CRITICAL",
+        })
+        issues.append(Issue(
+            plant=plant, item="整廠監控資料缺失",
+            phenomenon=f"{plant} 於 {start:%m/%d}～{end:%m/%d} 無品質或設備監控資料。",
+            impact="形成整廠 FMCS 監控盲區，無法確認設備、能源與水質狀態。",
+            level="CRITICAL",
+            action=f"檢查 {plant} 的資料匯入排程、PLC/SCADA 通訊及網路節點。",
+            score=period_hours, date=f"{start:%m/%d}", metric="資料完整性",
+            current="整週無有效資料", target="分析期間應持續回傳資料", trend="下降",
+            forecast="若資料仍未恢復，設備、能源與水質異常將無法被週報辨識。",
+        ))
+
     if not normalized:
         return rows, issues
 
@@ -810,7 +918,7 @@ def analyze_data_quality(
             rows.append({
                 "plant": str(plant), "type": "曲線空窗", "point": short_text(label, 34),
                 "period": f"{gap_start:%m/%d %H:%M}～{gap_end:%m/%d %H:%M}",
-                "duration": f"{fmt_num(gap_hours)} 小時", "detail": f"推估取樣週期 {fmt_num(cadence, 2)} 小時",
+                "duration": f"{fmt_num(gap_hours)} 小時", "detail": f"正常資料大約每 {fmt_num(cadence, 2)} 小時會有一筆；目前資料中斷超過這個間隔",
                 "level": level,
             })
             issues.append(Issue(
@@ -882,7 +990,7 @@ def analyze_data_quality(
             ))
             break
 
-    type_order = {"曲線空窗": 0, "降為 0": 1, "持續為 0": 1, "Keep Last": 2}
+    type_order = {"整廠資料缺失": -1, "曲線空窗": 0, "降為 0": 1, "持續為 0": 1, "Keep Last": 2}
     rows.sort(key=lambda r: (LEVEL_WEIGHT.get(r["level"], 0), -type_order.get(r["type"], 9)), reverse=True)
     return rows, issues
 
@@ -907,9 +1015,9 @@ def analyze_alarm_risk(start: pd.Timestamp, end: pd.Timestamp) -> list[dict[str,
         period = source[(source["TIME"] >= start) & (source["TIME"] <= end)].copy()
         if period.empty:
             results.append({
-                "plant": plant, "risk_score": 100.0, "health_score": 0.0, "abnormal": 0,
+                "plant": plant, "abnormal": 0,
                 "critical": 0, "active_high": 0, "coverage": 0.0, "freshness": "無當週資料",
-                "top_risk": "本週無警報資料，疑似資料中斷", "status": "CRITICAL",
+                "top_risk": "本週無警報資料", "status": "WARNING",
             })
             continue
         for col in ("ALM_ALMSTATUS", "ALM_ALMPRIORITY", "ALM_TAGNAME", "ALM_DESCR"):
@@ -917,42 +1025,25 @@ def analyze_alarm_risk(start: pd.Timestamp, end: pd.Timestamp) -> list[dict[str,
         actual_days = period["TIME"].dt.normalize().nunique()
         coverage = min(100.0, actual_days / expected_days * 100)
         latest = period.sort_values("TIME").drop_duplicates("ALM_TAGNAME", keep="last")
-        weights = {"OK": 0, "CFN": 30, "LO": 60, "HI": 60, "LOLO": 90, "HIHI": 90}
-        tag_risk = latest["ALM_ALMSTATUS"].map(weights).fillna(30).astype(float)
-        tag_risk += (latest["ALM_ALMPRIORITY"] == "CRITICAL").astype(int) * 10
-        risk_score = float(tag_risk.clip(upper=100).mean()) if len(latest) else 0.0
         abnormal = int((period["ALM_ALMSTATUS"] != "OK").sum())
         critical = int((period["ALM_ALMPRIORITY"] == "CRITICAL").sum())
         active_high = int(latest["ALM_ALMSTATUS"].isin(["HIHI", "LOLO"]).sum())
-        volume_penalty = min(25.0, abnormal / period_hours * 5.0)
-        critical_penalty = min(25.0, critical * 1.5 + active_high * 5.0)
-        coverage_penalty = max(0.0, 100.0 - coverage) * 0.6
-        combined_risk = min(
-            100.0,
-            risk_score * 0.5 + volume_penalty + critical_penalty + coverage_penalty,
-        )
         top = (
             period[period["ALM_ALMSTATUS"] != "OK"]
             .groupby(["ALM_TAGNAME", "ALM_DESCR"]).size().sort_values(ascending=False)
         )
         top_risk = "本週無異常警報" if top.empty else f"{top.index[0][1] or top.index[0][0]}（{int(top.iloc[0])}次）"
-        health_score = 100.0 - combined_risk
-        status = (
-            "NORMAL" if combined_risk < 30
-            else "WARNING" if combined_risk < 60
-            else "MAJOR" if combined_risk < 80
-            else "CRITICAL"
-        )
-        coverage_note = f"資料覆蓋 {fmt_num(coverage)}%"
-        top_risk = f"{coverage_note}；{top_risk}"
+        status = ("CRITICAL" if active_high > 0 else "MAJOR" if critical > 0
+                  else "WARNING" if abnormal > 0 else "NORMAL")
         results.append({
-            "plant": plant, "risk_score": round(combined_risk, 1),
-            "health_score": round(health_score, 1), "abnormal": abnormal, "critical": critical,
+            "plant": plant, "abnormal": abnormal, "critical": critical,
             "active_high": active_high, "coverage": round(coverage, 1),
             "freshness": f"{period['TIME'].max():%m/%d %H:%M}",
             "top_risk": top_risk,
             "status": status,
         })
+    # Alarm assessment is a volume/risk ranking: show the largest counts first.
+    results.sort(key=lambda row: (row.get("active_high", 0), row.get("critical", 0), row.get("abnormal", 0)), reverse=True)
     return results
 
 
@@ -1277,7 +1368,7 @@ def health_scores_v2(
     alarm_risk: list[dict[str, Any]],
     data_quality: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Approved weighted score: energy/water/data/alarm/trend; run rate excluded."""
+    """Approved score: pure water/wastewater/alarm/trend, each weighted 25%."""
     by_plant: dict[str, list[Issue]] = {}
     for issue in issues:
         by_plant.setdefault(issue.plant, []).append(issue)
@@ -1294,39 +1385,35 @@ def health_scores_v2(
         adv: list[str] = []
         weak: list[str] = []
         pm = plant_metrics.get(plant, {})
-        energy_parts: list[float] = []
-        if pm.get("chiller"):
-            value = min(float(r["mean"]) for r in pm["chiller"])
-            energy_parts.append(min(100.0, TARGETS["chiller_kwrt"] / max(value, 0.01) * 100.0))
-        if pm.get("compressor"):
-            value = max(float(r["mean"]) for r in pm["compressor"])
-            energy_parts.append(min(100.0, value / TARGETS["compressor_cmmkwh"] * 100.0))
-        energy = sum(energy_parts) / len(energy_parts) if energy_parts else 50.0
-
-        water_parts: list[float] = []
+        pure_water_parts: list[float] = []
         if pm.get("resistance"):
             value = min(float(r["mean"]) for r in pm["resistance"])
-            water_parts.append(min(100.0, value / TARGETS["upw_resistance"] * 100.0))
-        if pm.get("ph"):
-            distance = max(abs(float(r["mean"]) - 7.0) for r in pm["ph"])
-            water_parts.append(max(0.0, 100.0 - max(0.0, distance - 1.5) * 20.0))
+            pure_water_parts.append(min(100.0, value / TARGETS["upw_resistance"] * 100.0))
         if pm.get("conductivity"):
             value = max(float(r["mean"]) for r in pm["conductivity"])
-            water_parts.append(min(100.0, TARGETS["conductivity"] / max(value, 0.01) * 100.0))
-        water = sum(water_parts) / len(water_parts) if water_parts else 50.0
+            pure_water_parts.append(min(100.0, TARGETS["conductivity"] / max(value, 0.01) * 100.0))
+        pure_water = sum(pure_water_parts) / len(pure_water_parts) if pure_water_parts else 50.0
+
+        wastewater_parts: list[float] = []
+        if pm.get("ph"):
+            distance = max(abs(float(r["mean"]) - 7.0) for r in pm["ph"])
+            wastewater_parts.append(max(0.0, 100.0 - max(0.0, distance - 1.5) * 20.0))
+        wastewater = sum(wastewater_parts) / len(wastewater_parts) if wastewater_parts else 50.0
 
         dq_rows = dq_by_plant.get(plant, [])
-        dq_penalty = sum({"CRITICAL": 25, "MAJOR": 12, "WARNING": 5}.get(r["level"], 0) for r in dq_rows)
-        data_health = max(0.0, 100.0 - min(100.0, dq_penalty))
+        whole_plant_missing = any(r.get("type") == "整廠資料缺失" for r in dq_rows)
         if dq_rows:
-            weak.append(f"資料品質異常 {len(dq_rows)} 項")
+            if whole_plant_missing:
+                weak.append("整週無品質或設備監控資料")
+            else:
+                weak.append(f"資料品質異常 {len(dq_rows)} 項")
         else:
             adv.append("未發現曲線空窗、歸零或48小時 Keep Last")
 
         alarm = alarm_by_plant.get(plant)
         alarm_health = float(alarm["health_score"]) if alarm else 50.0
         if alarm and alarm.get("risk_score") is not None:
-            (adv if alarm["risk_score"] < 30 else weak).append(f"警報風險 {fmt_num(alarm['risk_score'])}")
+            (adv if alarm["risk_score"] < 30 else weak).append("警報狀態穩定" if alarm["risk_score"] < 30 else "警報風險偏高")
         elif plant in ALARM_CONNECTED_PLANTS:
             weak.append("警報資料涵蓋不足，不列入正式比較")
 
@@ -1337,19 +1424,22 @@ def health_scores_v2(
         trend_penalty = sum({"CRITICAL": 35, "MAJOR": 20, "WARNING": 8}.get(i.level, 0) for i in trend_issues)
         trend = max(0.0, 100.0 - min(100.0, trend_penalty))
         breakdown = {
-            "energy": round(energy * 0.30, 1),
-            "water": round(water * 0.25, 1),
-            "data_health": round(data_health * 0.20, 1),
-            "alarm": round(alarm_health * 0.15, 1),
-            "trend": round(trend * 0.10, 1),
+            "pure_water": round(pure_water * 0.25, 1),
+            "wastewater": round(wastewater * 0.25, 1),
+            "alarm": round(alarm_health * 0.25, 1),
+            "trend": round(trend * 0.25, 1),
         }
         score = round(sum(breakdown.values()), 1)
+        score_formula = (
+            f"純水{fmt_num(breakdown['pure_water'])}/25＋廢水{fmt_num(breakdown['wastewater'])}/25＋"
+            f"警報{fmt_num(breakdown['alarm'])}/25＋異常趨勢{fmt_num(breakdown['trend'])}/25"
+        )
         status = "NORMAL" if score >= 85 else "WARNING" if score >= 70 else "MAJOR" if score >= 55 else "CRITICAL"
         rows.append({
             "rank": 0, "plant": plant, "score": score,
             "advantage": "；".join(adv[:3]) if adv else "本週未發現明顯優勢",
             "weakness": "；".join(weak[:3]) if weak else "本週無重大待改善項目",
-            "status": status, "score_breakdown": breakdown,
+            "status": status, "score_breakdown": breakdown, "score_formula": score_formula,
         })
     rows.sort(key=lambda row: row["score"], reverse=True)
     for rank, row in enumerate(rows, 1):
@@ -1397,13 +1487,172 @@ def issue_to_trend_row(issue: Issue) -> dict[str, str]:
         "trend": issue.trend,
         "forecast": issue.forecast or "下週持續追蹤是否回到正常區間。",
         "level": issue.level,
+        "score": float(issue.score),
     }
+
+
+def analyze_quality_by_history(
+    df: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp,
+) -> tuple[list[Issue], dict[str, dict[str, list[dict[str, Any]]]], list[dict[str, str]], list[dict[str, str]]]:
+    """Rank visible trends by recent 3-day deviation from the preceding 4-day baseline."""
+    issues: list[Issue] = []
+    plant_metrics: dict[str, dict[str, list[dict[str, Any]]]] = {}
+    best: list[dict[str, str]] = []
+    worst: list[dict[str, str]] = []
+    if df.empty:
+        return issues, plant_metrics, best, worst
+    work = df.copy()
+    work["TIMESTAMP"] = pd.to_datetime(work["TIMESTAMP"], errors="coerce")
+    work["VALUE"] = pd.to_numeric(work["VALUE"], errors="coerce")
+    work = work.dropna(subset=["TIMESTAMP", "VALUE"])
+    split = end.normalize() - pd.Timedelta(days=2)
+    metric_defs = [
+        ("超純水水阻近期走勢", "resistance", is_resistance, "higher", "MΩ"),
+        ("出水導電度近期走勢", "conductivity", is_conductivity, "lower", ""),
+        ("廢水 pH 穩定度", "ph", is_ph, "stable", "pH"),
+        ("排氣／集塵靜壓穩定度", "pressure", is_pressure, "stable", "Pa"),
+    ]
+    keys = ["PLANT", "EQNAME", "DESCRIPTION", "TAGNAME"]
+    for metric_name, kind, predicate, direction, unit in metric_defs:
+        metric_df = work[work.apply(
+            lambda row: predicate(str(row.get("EQNAME", "")), str(row.get("DESCRIPTION", "")), str(row.get("TAGNAME", ""))),
+            axis=1,
+        )].copy()
+        comparisons: list[dict[str, Any]] = []
+        for key, group in metric_df.groupby(keys, dropna=False):
+            baseline = group[group["TIMESTAMP"] < split]["VALUE"]
+            recent = group[group["TIMESTAMP"] >= split]["VALUE"]
+            if baseline.empty or recent.empty:
+                continue
+            base = float(baseline.mean())
+            current = float(recent.mean())
+            raw_change = (current - base) / max(abs(base), 0.01) * 100.0
+            if direction == "higher":
+                performance = raw_change
+            elif direction == "lower":
+                performance = -raw_change
+            else:
+                performance = -abs(raw_change)
+            row = {
+                "PLANT": str(key[0]), "EQNAME": str(key[1]), "DESCRIPTION": str(key[2]),
+                "TAGNAME": str(key[3]), "baseline": base, "recent": current,
+                "change_pct": raw_change, "performance": performance,
+                "_kind": kind,
+            }
+            comparisons.append(row)
+            plant_metrics.setdefault(str(key[0]), {}).setdefault(kind, []).append(row)
+        if not comparisons:
+            continue
+        comparisons.sort(key=lambda row: row["performance"], reverse=True)
+        best_row, worst_row = comparisons[0], comparisons[-1]
+        def trend_value(row: dict[str, Any]) -> str:
+            suffix = f" {unit}" if unit else ""
+            return (
+                f"近期 {fmt_num(row['recent'], 2)}{suffix}；前段 {fmt_num(row['baseline'], 2)}{suffix}；"
+                f"偏離 {fmt_num(row['change_pct'], 1)}%"
+            )
+        best.append({"metric": metric_name, "plant": best_row["PLANT"],
+                     "data_point": best_row["DESCRIPTION"], "value": trend_value(best_row)})
+        worst.append({"metric": metric_name, "plant": worst_row["PLANT"],
+                      "data_point": worst_row["DESCRIPTION"], "value": trend_value(worst_row)})
+        for row in comparisons:
+            deterioration = max(0.0, -float(row["performance"]))
+            if deterioration <= 0.0:
+                continue
+            level = ("CRITICAL" if deterioration >= 20 else "MAJOR" if deterioration >= 10
+                     else "WARNING" if deterioration >= 5 else "NORMAL")
+            direction_text = "上升" if row["change_pct"] > 0 else "下降"
+            phenomenon = (
+                f"{row['DESCRIPTION']} 近期水準 {fmt_num(row['recent'], 2)} {unit}，"
+                f"相較前段水準 {fmt_num(row['baseline'], 2)} {unit}{direction_text} {fmt_num(abs(row['change_pct']), 1)}%。"
+            ).replace("  ，", "，")
+            impact_map = {
+                "chiller": "冰機效率近期轉差，可能增加公用系統負荷。",
+                "compressor": "空壓效率近期轉差，可能降低 CDA 供應效率。",
+                "resistance": "UPW 水阻較以往下降，代表近期供水品質走弱。",
+                "conductivity": "出水導電度較以往上升，代表近期水質走弱。",
+                "ph": "廢水 pH 較自身以往水準偏離，代表中和控制穩定度下降。",
+                "pressure": "排氣／集塵靜壓偏離前段水準，可能代表風量、濾網或設備運轉狀態變化。",
+                "general": "廠務趨勢偏離前段水準，需確認對應設備與製程影響。",
+            }
+            action_map = {
+                "chiller": "比對近期負載、冷卻水溫差與主機運轉配置。",
+                "compressor": "比對近期用氣量、壓力、洩漏與機組負載配置。",
+                "resistance": "比對 UPW 產水、樹脂／膜組狀態及儀表校正紀錄。",
+                "conductivity": "比對純水處理單元、耗材狀態及儀表校正紀錄。",
+                "ph": "比對中和槽負荷、加藥量、攪拌及 pH 儀表紀錄。",
+                "pressure": "確認排氣／集塵設備運轉、濾網壓損、風量與差壓計校正狀態。",
+                "general": "確認該監測點設備狀態、資料品質與現場操作紀錄。",
+            }
+            issues.append(Issue(
+                plant=row["PLANT"], item=metric_name, phenomenon=phenomenon,
+                impact=impact_map[kind], level=level, action=action_map[kind],
+                score=deterioration, metric=metric_name,
+                current=f"近期 {fmt_num(row['recent'], 2)}；前段 {fmt_num(row['baseline'], 2)}",
+                target="前段歷史水準", trend="偏離擴大",
+                forecast="若近期偏離持續，製造供應品質或系統效率可能進一步走弱。",
+            ))
+    return issues, plant_metrics, best[:5], worst[:5]
+
+
+def health_rankings_by_trend(
+    plant_metrics: dict[str, dict[str, list[dict[str, Any]]]], source_plants: set[str],
+    alarm_risk: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Create ordinal rankings from visible trend direction; no weighted or total score."""
+    alarm_by_plant = {row["plant"]: row for row in alarm_risk}
+    plants = sorted(set(PLANT_ORDER) | source_plants | set(alarm_by_plant),
+                    key=lambda p: (PLANT_ORDER.index(p), p) if p in PLANT_ORDER else (99, p))
+    rows: list[dict[str, Any]] = []
+    for plant in plants:
+        metrics = [item for group in plant_metrics.get(plant, {}).values() for item in group]
+        performances = [float(item["performance"]) for item in metrics]
+        worsening = sum(value < -5 for value in performances)
+        improving = sum(value > 5 for value in performances)
+        worst_deviation = min(performances, default=0.0)
+        improving_points = [str(item.get("DESCRIPTION", "")) for item in metrics if float(item.get("performance", 0)) > 5]
+        worsening_points = [str(item.get("DESCRIPTION", "")) for item in metrics if float(item.get("performance", 0)) < -5]
+        best_point = max(metrics, key=lambda item: float(item.get("performance", 0)), default=None)
+        worst_point = min(metrics, key=lambda item: float(item.get("performance", 0)), default=None)
+        alarm = alarm_by_plant.get(plant, {})
+        alarm_tuple = (int(alarm.get("active_high", 0)), int(alarm.get("critical", 0)), int(alarm.get("abnormal", 0)))
+        if worsening == 0 and alarm_tuple[0] == 0:
+            status = "NORMAL"
+        elif worsening <= 1 and alarm_tuple[0] == 0:
+            status = "WARNING"
+        elif worsening <= 2:
+            status = "MAJOR"
+        else:
+            status = "CRITICAL"
+        rows.append({
+            "rank": 0, "plant": plant,
+            "advantage": (f"最佳改善：{best_point['DESCRIPTION']}，改善幅度 {fmt_num(abs(float(best_point['performance'])), 1)}%") if best_point and float(best_point["performance"]) > 0 else "最佳改善：無正向變化",
+            "weakness": (f"最嚴重惡化：{worst_point['DESCRIPTION']}，惡化幅度 {fmt_num(abs(float(worst_point['performance'])), 1)}%") if worst_point and float(worst_point["performance"]) < 0 else "最嚴重惡化：0%；無負向變化",
+            "status": status,
+            # The displayed table has no status column; rank only by the
+            # visible primary advantage, from best to worst.
+            "_sort": (-max(float(item.get("performance", 0)) for item in metrics) if metrics else 0,
+                       plant),
+        })
+    rows.sort(key=lambda row: row["_sort"])
+    for idx, row in enumerate(rows, 1):
+        row["rank"] = idx
+        row.pop("_sort", None)
+    return rows
 
 
 def build_report(start: pd.Timestamp, end: pd.Timestamp) -> dict[str, Any]:
     run_df = filter_period(read_csv(RUN_RATE_CSV), start, end)
-    quality_df = filter_period(read_csv(QUALITY_CSV), start, end)
-    equipment_df = filter_period(read_csv(DATA_CSV), start, end)
+    raw_quality_df = read_csv(QUALITY_CSV)
+    raw_equipment_df = read_csv(DATA_CSV)
+    expected_data_plants = {
+        str(plant).strip()
+        for frame in (raw_quality_df, raw_equipment_df)
+        if not frame.empty and "PLANT" in frame.columns
+        for plant in frame["PLANT"].dropna().unique()
+    }
+    quality_df = filter_period(raw_quality_df, start, end)
+    equipment_df = filter_period(raw_equipment_df, start, end)
     source_plants = {
         str(plant)
         for frame in (run_df, quality_df, equipment_df)
@@ -1412,37 +1661,45 @@ def build_report(start: pd.Timestamp, end: pd.Timestamp) -> dict[str, Any]:
     }
 
     _run_issues, run_stats = analyze_run_rate(run_df, start, end)
-    quality_issues, plant_metrics, best, worst = analyze_quality(quality_df, start, end)
+    # All visible trend sources share the same history comparison logic.  The
+    # former implementation only passed the water-quality CSV, which silently
+    # excluded exhaust static pressure and other facility trends.
+    trend_frames = [frame for frame in (quality_df, equipment_df) if not frame.empty]
+    trend_df = pd.concat(trend_frames, ignore_index=True) if trend_frames else pd.DataFrame()
+    quality_issues, plant_metrics, best, worst = analyze_quality_by_history(trend_df, start, end)
     data_quality, data_quality_issues = analyze_data_quality(
-        [quality_df, equipment_df], start, end
+        [quality_df, equipment_df], start, end, expected_data_plants
     )
+    data_quality = [
+        row for row in data_quality
+        if not any(term.lower() in str(row.get("point", "")).lower() for term in EXCLUDED_REPORT_TERMS)
+    ]
     alarm_risk = analyze_alarm_risk(start, end)
-    alarm_issues: list[Issue] = []
-    for alarm in alarm_risk:
-        risk = alarm.get("risk_score")
-        if risk is None or risk < 30:
-            continue
-        level = "CRITICAL" if alarm.get("active_high", 0) > 0 or risk >= 75 else "MAJOR" if risk >= 60 else "WARNING"
-        alarm_issues.append(Issue(
-            plant=alarm["plant"], item="警報風險",
-            phenomenon=(
-                f"本週異常警報 {alarm['abnormal']} 次、Critical {alarm['critical']} 次、"
-                f"HIHI/LOLO 未復歸 {alarm['active_high']} 點，風險 {fmt_num(risk)}。"
-            ),
-            impact="高頻或未復歸警報可能代表設備、製程或環安風險。",
-            level=level,
-            action=f"優先處理 {alarm['plant']} 警報 TOP 項目：{alarm['top_risk']}，確認原因與復歸紀錄。",
-            score=float(risk), metric="警報風險", current=fmt_num(risk),
-            target="<30", trend="上升",
-            forecast="若高風險警報持續，可能造成設備異常擴大或監控負荷增加。",
-        ))
-    # Run rate is intentionally excluded from ranking, TOP events and trend pages.
-    all_issues = dedupe_issues(quality_issues + data_quality_issues + alarm_issues)
-    all_issues.sort(key=lambda x: rank_level(x.level, x.score), reverse=True)
-
-    health = health_scores_v2(
-        run_stats, plant_metrics, all_issues, source_plants, alarm_risk, data_quality
+    # 主題排序只採趨勢圖可見的品質/效率走勢；資料中斷與警報彙總另頁呈現。
+    # 主管週報主軸聚焦製造供應品質；資料中斷僅保留於 P9 維護附表。
+    all_issues = dedupe_issues(quality_issues)
+    # 供應品質趨勢優先於警報彙總；同類內再按等級與規則判定值排序。
+    all_issues.sort(
+        key=lambda x: (x.item != "警報風險", *rank_level(x.level, x.score)),
+        reverse=True,
     )
+
+    health = health_rankings_by_trend(plant_metrics, source_plants, alarm_risk)
+
+    # P5/P6 are plant-comparison topics: retain one representative best and
+    # worst metric for every plant, rather than only one row per metric type.
+    all_plant_rows = []
+    for plant, groups in plant_metrics.items():
+        all_plant_rows.extend([dict(row, _kind=kind) for kind, rows in groups.items() for row in rows])
+    def report_metric_row(row: dict[str, Any]) -> dict[str, Any]:
+        unit = {"resistance": "MΩ", "conductivity": "", "ph": "pH", "chiller": "", "compressor": ""}.get(row.get("_kind", ""), "")
+        suffix = f" {unit}" if unit else ""
+        return {"metric": METRIC_LABELS.get(row["_kind"], row["_kind"]), "plant": row["PLANT"], "data_point": row["DESCRIPTION"],
+                "value": f"近期水準 {fmt_num(row['recent'], 2)}{suffix}；前段水準 {fmt_num(row['baseline'], 2)}{suffix}（變化 {fmt_num(row['change_pct'], 1)}%）"}
+    best = [report_metric_row(max(rows, key=lambda r: r["performance"])) for plant in sorted(set(PLANT_ORDER) | source_plants)
+            if (rows := [r for r in all_plant_rows if r["PLANT"] == plant])]
+    worst = [report_metric_row(min(rows, key=lambda r: r["performance"])) for plant in sorted(set(PLANT_ORDER) | source_plants)
+             if (rows := [r for r in all_plant_rows if r["PLANT"] == plant])]
 
     top3 = []
     for idx, issue in enumerate(select_diverse(all_issues, 3), 1):
@@ -1454,17 +1711,26 @@ def build_report(start: pd.Timestamp, end: pd.Timestamp) -> dict[str, Any]:
             "action": issue.action,
         })
 
-    events = [{
-        "date": issue.date,
-        "plant": issue.plant,
-        "item": issue.item,
-        "phenomenon": issue.phenomenon,
-        "impact": issue.impact,
-        "level": issue.level,
-    } for issue in all_issues[:8]]
+    reportable_issues = [issue for issue in all_issues if issue.level != "NORMAL"]
+    events = []
+    # specialcase-weekly.txt is an event annotation, not a management action.
+    # Keep it in the event topic so it is visible with the week's abnormal events.
+    special_events = []
+    for row in special_case_action_rows(set(PLANT_ORDER) | source_plants):
+        special_events.append({
+            "date": end.strftime("%Y-%m-%d"),
+            "plant": row["plant"], "item": row["item"],
+            "phenomenon": row["action"],
+            "impact": "需由現場確認並追蹤",
+            "level": row["level"],
+        })
+    events.extend(special_events)
 
     trend_issues = [issue for issue in all_issues if issue.level in ("CRITICAL", "MAJOR", "WARNING")]
-    trends = [issue_to_trend_row(issue) for issue in trend_issues[:5]]
+    trends = []
+    for issue in trend_issues[:5]:
+        row = issue_to_trend_row(issue)
+        trends.append(row)
     existing_trend_keys = {
         (row["plant"], row["metric"], row["current"], row["forecast"])
         for row in trends
@@ -1478,34 +1744,69 @@ def build_report(start: pd.Timestamp, end: pd.Timestamp) -> dict[str, Any]:
             trends.append(row)
             existing_trend_keys.add(key)
 
+    # Future-risk page is a plant-wide assessment, not an exception-only list.
+    # Add a quantified normal row for every plant without a warning row.
+    trend_plants = {row["plant"] for row in trends}
+    for plant in health:
+        if plant["plant"] in trend_plants:
+            continue
+        plant_rows = [r for group in plant_metrics.get(plant["plant"], {}).values() for r in group]
+        if plant_rows:
+            representative = min(plant_rows, key=lambda r: abs(float(r["performance"])))
+            label = METRIC_LABELS.get(representative.get("_kind", ""), representative.get("_kind", "指標"))
+            trends.append({
+                "plant": plant["plant"], "metric": label,
+                "current": f"近期水準 {fmt_num(representative['recent'], 2)}；前段水準 {fmt_num(representative['baseline'], 2)}",
+                "target": f"偏離 {fmt_num(abs(representative['change_pct']), 1)}%",
+                "trend": "穩定" if abs(float(representative["performance"])) <= 5 else "改善",
+                "forecast": f"{label}（{representative['DESCRIPTION']}）近期相較前段水準變化 {fmt_num(representative['change_pct'], 1)}%，後續持續監測。",
+                "level": "NORMAL",
+            })
+        else:
+            trends.append({
+                "plant": plant["plant"], "metric": "本週可評估指標",
+                "current": "有效資料 0 筆", "target": "無法計算偏離百分比",
+                "trend": "資料不足",
+                "forecast": "本週沒有可用數值指標，無法進行量化趨勢評估；請確認資料來源與通訊狀態。",
+                "level": "WARNING",
+            })
+    # Risk rank is severity-first, then quantified deviation.  This prevents
+    # a NORMAL plant from appearing above a CRITICAL plant merely because of
+    # the fixed plant order.
+    trends.sort(key=lambda row: (-LEVEL_WEIGHT.get(str(row.get("level", "NORMAL")), 0),
+                                 -float(row.get("score", 0) or 0), row["plant"]))
+
     # The page-1 KPI cards summarize what the report visibly lists:
     # P2 event rows for Critical/Major, and P3 trend rows for Warning.
     critical_count = sum(1 for row in events if row.get("level") == "CRITICAL")
     major_count = sum(1 for row in events if row.get("level") == "MAJOR")
     warning_count = sum(1 for row in trends if row.get("level") == "WARNING")
 
-    actions = [{
-        "priority": str(idx),
-        "plant": issue.plant,
-        "item": issue.item,
-        "action": issue.action,
-        "level": issue.level,
-    } for idx, issue in enumerate(all_issues[:5], 1)]
-    low_run_rate_reminders = [
-        {
-            "priority": "",
-            "plant": plant,
-            "item": "運轉率低於50%提醒",
-            "action": f"本週平均運轉率 {fmt_num(stats['mean'])}%，提醒主管注意此現象。",
-            "level": "WARNING",
-        }
-        for plant, stats in sorted(run_stats.items())
-        if float(stats.get("mean", 100.0)) < 50.0
-    ]
-    actions.extend(low_run_rate_reminders)
-    actions.extend(special_case_action_rows(set(PLANT_ORDER) | source_plants))
+    # Management actions are one row per plant.  This keeps the page
+    # comparable with the other all-plant topics while preserving the common
+    # severity-first ordering.
+    issues_by_plant: dict[str, list[Issue]] = {}
+    for issue in reportable_issues:
+        issues_by_plant.setdefault(issue.plant, []).append(issue)
+    actions = []
+    all_report_plants = {row["plant"] for row in health} | set(PLANT_ORDER) | source_plants
+    for plant in sorted(all_report_plants,
+                        key=lambda p: (PLANT_ORDER.index(p), p) if p in PLANT_ORDER else (99, p)):
+        plant_issues = sorted(issues_by_plant.get(plant, []),
+                              key=lambda x: rank_level(x.level, x.score), reverse=True)
+        if plant_issues:
+            issue = plant_issues[0]
+            actions.append({"priority": "", "plant": plant, "item": issue.item,
+                            "action": issue.action, "level": issue.level,
+                            "_sort": (-LEVEL_WEIGHT.get(issue.level, 0), -float(issue.score), plant)})
+        else:
+            actions.append({"priority": "", "plant": plant, "item": "本週例行追蹤",
+                            "action": "本週無需新增改善行動，維持監測並於下週確認趨勢。",
+                            "level": "NORMAL", "_sort": (0, 0, plant)})
+    actions.sort(key=lambda row: row["_sort"])
     for idx, action in enumerate(actions, 1):
         action["priority"] = str(idx)
+        action.pop("_sort", None)
 
     best_plants = " / ".join(r["plant"] for r in health[:3])
     worst_plants = " / ".join(r["plant"] for r in health[-3:][::-1])
@@ -1529,7 +1830,7 @@ def build_report(start: pd.Timestamp, end: pd.Timestamp) -> dict[str, Any]:
         "top3": top3,
         "events": events,
         "trend_warnings": trends,
-        "health_scores": health,
+        "trend_rankings": health,
         "best_performers": best,
         "worst_areas": worst,
         "actions": actions,
@@ -1599,11 +1900,12 @@ def main() -> None:
             df["TIMESTAMP"] = pd.to_datetime(df["TIMESTAMP"], errors="coerce")
     start, end = choose_period(raw_frames)
     report = build_report(start, end)
-    if polish_weekly_report_text_with_openai(report):
+    if API_REPORT_REWRITE_ENABLED and polish_weekly_report_text_with_openai(report):
         report["meta"]["generator"] = "local_rules_v1_openai_weekly_text"
         report["meta"]["openai_text"] = "enabled"
     else:
-        report["meta"]["openai_text"] = "fallback_local_rules"
+        report["meta"]["openai_text"] = "disabled_local_rules"
+    report["meta"]["narrative_ownership"] = narrative_ownership_metrics(report)
 
     out = Path(args.output)
     out.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")

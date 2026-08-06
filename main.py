@@ -433,10 +433,12 @@ def regen_from_backup(reason="account sync"):
         print(f"[ERROR] 備份重建失敗: {e}")
 
 
+CSV_RETENTION_DAYS = 14
+
 # ── 主排程任務 ────────────────────────────────────────────────────────────────
 
 def update_alarm_history():
-    """隨設備狀態週期增量更新 KF1 警報 CSV，並只保留最新資料時間往前 7 天。"""
+    """隨設備狀態週期增量更新 KF1 警報 CSV，保留最近 14 天。"""
     alarm_path = os.path.join(SCRIPT_DIR, "latest_alarm_history_backup.csv")
     temp_path = alarm_path + ".tmp"
     source_columns = [
@@ -500,10 +502,10 @@ def update_alarm_history():
                     .sort_values('ALM_NATIVETIMELAST'))
         if not combined.empty:
             latest_time = combined['ALM_NATIVETIMELAST'].max()
-            cutoff = latest_time - pd.Timedelta(days=7)
+            cutoff = latest_time - pd.Timedelta(days=CSV_RETENTION_DAYS)
             before_cleanup = len(combined)
             combined = combined[combined['ALM_NATIVETIMELAST'] >= cutoff]
-            print(f"[ALARM] 七天裁剪移除 {before_cleanup - len(combined)} 筆，保留 {len(combined)} 筆。")
+            print(f"[ALARM] {CSV_RETENTION_DAYS} 天裁剪移除 {before_cleanup - len(combined)} 筆，保留 {len(combined)} 筆。")
 
         ordered = ['PLANT'] + [c for c in source_columns if c in combined.columns]
         remaining = [c for c in combined.columns if c not in ordered]
@@ -587,13 +589,13 @@ def update_other_alarm_history():
             else:
                 query = f"""
                 SELECT * FROM [ALM_DB].[dbo].[{table}]
-                WHERE ALM_NATIVETIMELAST >= DATEADD(day, -7, (
+                WHERE ALM_NATIVETIMELAST >= DATEADD(day, -14, (
                     SELECT MAX(ALM_NATIVETIMELAST) FROM [ALM_DB].[dbo].[{table}]
                 ))
                 ORDER BY ALM_NATIVETIMELAST ASC
                 """
                 incoming = pd.read_sql(query, conn)
-                print(f"[ALARM:{plant}] 首次回抓最近 7 日，共 {len(incoming)} 筆。")
+                print(f"[ALARM:{plant}] 首次回抓最近 14 日，共 {len(incoming)} 筆。")
 
             if not incoming.empty:
                 incoming.insert(0, 'PLANT', plant)
@@ -618,7 +620,7 @@ def update_other_alarm_history():
         combined = combined.drop_duplicates(subset=dedup_columns, keep='last')
         latest_per_plant = combined.groupby('PLANT')['ALM_NATIVETIMELAST'].transform('max')
         combined = combined[
-            combined['ALM_NATIVETIMELAST'] >= latest_per_plant - pd.Timedelta(days=7)
+            combined['ALM_NATIVETIMELAST'] >= latest_per_plant - pd.Timedelta(days=CSV_RETENTION_DAYS)
         ].sort_values(['PLANT', 'ALM_NATIVETIMELAST'])
 
         ordered = ['PLANT'] + [c for c in source_columns if c in combined.columns]
@@ -681,11 +683,11 @@ def fetch_data_and_update():
         """
         df = pd.read_sql(query, conn)
         
-        # 2) 抓取品質/能效歷史趨勢 (7天，168小時)
+        # 2) 抓取品質/能效歷史趨勢 (14天，336小時)
         print("同步抓取 dbo.EQQT_DB (能效/品質歷史趨勢)...")
         query_quality = """
         SELECT * FROM dbo.EQQT_DB
-        WHERE TIMESTAMP >= DATEADD(day, -7, (SELECT MAX(TIMESTAMP) FROM dbo.EQQT_DB))
+            WHERE TIMESTAMP >= DATEADD(day, -14, (SELECT MAX(TIMESTAMP) FROM dbo.EQQT_DB))
         ORDER BY TIMESTAMP ASC
         """
         try:
@@ -717,7 +719,7 @@ def fetch_data_and_update():
             print(f"[OK] 取得品質數據 {len(df_quality)} 筆。")
             
             # ── 資料存儲生命週期管理 (品質/能效趨勢數據) ─────────────────────
-            # 確保趨勢圖數據持續累積到第 169 筆 (>7 天 / 168 小時) 的舊數據自動刪除，避免資料無限膨脹
+            # 保留最近 14 天（336 小時）的趨勢資料，供前後週比較
             if not df_quality.empty:
                 # 1. 統一對齊到整點
                 df_quality['TIMESTAMP'] = pd.to_datetime(df_quality['TIMESTAMP']).dt.ceil('h')
@@ -735,15 +737,15 @@ def fetch_data_and_update():
                 
                 max_q_time = df_quality['TIMESTAMP'].max()
                 if pd.notna(max_q_time):
-                    # 3. 刪除大於 7 天 (168小時) 的舊數據
-                    df_quality = df_quality[df_quality['TIMESTAMP'] >= max_q_time - pd.Timedelta(days=7)]
+                    # 3. 刪除大於 14 天 (336小時) 的舊數據
+                    df_quality = df_quality[df_quality['TIMESTAMP'] >= max_q_time - pd.Timedelta(days=CSV_RETENTION_DAYS)]
                     
-                    # 4. 如果不同的整點時間戳個數大於 168 個，保留最新 168 個整點的數據，自動刪除更舊的
+                    # 4. 如果不同的整點時間戳個數大於 336 個，只保留最新 336 個整點
                     unique_hours = sorted(df_quality['TIMESTAMP'].unique(), reverse=True)
-                    if len(unique_hours) > 168:
-                        keep_hours = unique_hours[:168]
+                    if len(unique_hours) > 336:
+                        keep_hours = unique_hours[:336]
                         df_quality = df_quality[df_quality['TIMESTAMP'].isin(keep_hours)]
-                    print(f"[CLEANUP] 品質趨勢快取已對齊整點並裁剪保留最新 168 個整點內數據 (剩餘 {len(df_quality)} 筆)。")
+                    print(f"[CLEANUP] 品質趨勢快取已對齊整點並裁剪保留最新 336 個整點內數據 (剩餘 {len(df_quality)} 筆)。")
             # ── 針對大宗化學品 (CHEM/SUP_.*_TANK) 強制覆寫 EQNAME ────────────────────
             if not df_quality.empty:
                 chem_mask = df_quality['TAGNAME'].str.contains('CHEM|SUP_.*_TANK', case=False, na=False)
@@ -766,7 +768,7 @@ def fetch_data_and_update():
         print(f"[OK] 取得 {len(df)} 筆資料。")
 
         # ── 資料存儲生命週期管理 (設備運轉狀態快取) ─────────────────────
-        # 確保設備運轉的數據累積到第 3 小時 (>3 小時) 的舊數據自動刪除，避免資料無限膨脹
+        # 與其他滾動 CSV 一致，保留最近 14 天供前後週比較。
         if not df.empty:
             # 設備狀態以觸發整點為 TIMESTAMP（所有當次抓取的資料一律對齊 trigger_ts）
             df['TIMESTAMP'] = trigger_ts
@@ -779,8 +781,24 @@ def fetch_data_and_update():
                 df['PLANT'].astype(str).str.strip().str.upper()
                 .replace({'KF': 'KF1'})
             )
-        df.to_csv(os.path.join(SCRIPT_DIR, "latest_data_backup.csv"),
-                  index=False, encoding='utf-8-sig')
+        data_backup_path = os.path.join(SCRIPT_DIR, "latest_data_backup.csv")
+        existing_data = pd.DataFrame()
+        if os.path.exists(data_backup_path):
+            try:
+                existing_data = pd.read_csv(data_backup_path, encoding='utf-8-sig')
+            except Exception as data_read_err:
+                print(f"[WARN] 讀取設備歷史 CSV 失敗，將以本次資料重建：{data_read_err}")
+        combined_data = pd.concat([existing_data, df], ignore_index=True, sort=False)
+        combined_data['TIMESTAMP'] = pd.to_datetime(combined_data['TIMESTAMP'], errors='coerce')
+        combined_data = combined_data.dropna(subset=['TIMESTAMP'])
+        combined_data = combined_data.drop_duplicates(
+            subset=[c for c in ('PLANT', 'EQNO', 'TAGNAME', 'TIMESTAMP') if c in combined_data.columns],
+            keep='last'
+        )
+        if not combined_data.empty:
+            max_data_time = combined_data['TIMESTAMP'].max()
+            combined_data = combined_data[combined_data['TIMESTAMP'] >= max_data_time - pd.Timedelta(days=CSV_RETENTION_DAYS)]
+        combined_data.to_csv(data_backup_path, index=False, encoding='utf-8-sig')
 
         # Step 5：重建儀表板（使用最新 accounts.json 與警報 CSV）
         create_status_dashboard_fresh(df, "index.html")
