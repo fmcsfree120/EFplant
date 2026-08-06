@@ -2,25 +2,92 @@
 
 from __future__ import annotations
 
+import csv
+import re
+from difflib import SequenceMatcher, get_close_matches
+from functools import lru_cache
+from pathlib import Path
+
 import pandas as pd
 
 
 ALARM_DESCRIPTION_COLUMN = "ALM_DESCR"
+ALARM_TAG_COLUMN = "ALM_TAGNAME"
+
 PLANT_COLUMN = "PLANT"
-
-# Alarm points in the supplied S2A/T2A action-alarm lists must always remain
-# visible in operational-risk calculations.  UL3 is the historical tag prefix
-# for the LC3 dashboard plant.  The supplied UPW.UPW... action-alarm tags
-# belong to S2; S2 is already covered by this plant-wide exemption.
-ACTION_ALARM_PLANTS = frozenset({
-    "S2", "S2A", "S3", "T2A", "HJ1", "HJ2", "PCB", "LC3",
-})
+ACTION_ALARM_LIST_GLOBS = ("S2A*.csv", "T2A*.csv")
+ACTION_ALARM_SIMILARITY = 80.0
+ACTION_ALARM_PLANTS = frozenset({"S2", "S2A", "S3", "T2A", "HJ1", "HJ2", "PCB", "LC3"})
 
 
-def canonical_alarm_plant(plant: object) -> str:
-    """Return the dashboard-compatible plant label for an alarm row."""
-    value = "" if pd.isna(plant) else str(plant).strip().upper()
-    return "KF1" if value == "KF" else value
+def _normalise_alarm_text(value: object, remove_system_prefix: bool = False) -> str:
+    """Normalise tags/descriptions before the approved fuzzy comparison."""
+    text = "" if pd.isna(value) else str(value).upper().strip()
+    if remove_system_prefix and "." in text:
+        text = text.split(".", 1)[1]
+    text = re.sub(r"\.-?NOPRI$", "", text)
+    return "".join(char for char in text if char.isalnum())
+
+
+@lru_cache(maxsize=1)
+def _action_alarm_reference() -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Load enabled action-alarm tags and descriptions from the supplied CSVs."""
+    base_dir = Path(__file__).resolve().parent
+    tags: set[str] = set()
+    descriptions: set[str] = set()
+    for pattern in ACTION_ALARM_LIST_GLOBS:
+        for path in base_dir.glob(pattern):
+            with path.open(encoding="cp950", errors="replace", newline="") as handle:
+                for row in csv.DictReader(handle):
+                    if str(row.get("enable", "")).strip().lower() != "true":
+                        continue
+                    raw_tag = row.get("almtag", "")
+                    tags.add(_normalise_alarm_text(raw_tag))
+                    tags.add(_normalise_alarm_text(raw_tag, remove_system_prefix=True))
+                    description = _normalise_alarm_text(row.get("description", ""))
+                    if description:
+                        descriptions.add(description)
+    return tuple(sorted(tags - {""})), tuple(sorted(descriptions))
+
+
+def _similarity_over_threshold(value: str, references: tuple[str, ...]) -> bool:
+    """Return true only for a strict similarity score greater than 80%."""
+    if not value or not references:
+        return False
+    matches = get_close_matches(value, references, n=1, cutoff=ACTION_ALARM_SIMILARITY / 100)
+    if not matches:
+        return False
+    score = SequenceMatcher(None, value, matches[0], autojunk=False).ratio() * 100
+    return score > ACTION_ALARM_SIMILARITY
+
+
+@lru_cache(maxsize=8192)
+def is_action_alarm_point(tag: object, description: object) -> bool:
+    """Identify a supplied action-alarm point by tag or description similarity."""
+    tags, descriptions = _action_alarm_reference()
+    raw_tag = "" if pd.isna(tag) else str(tag)
+    tag_match = any(
+        _similarity_over_threshold(_normalise_alarm_text(raw_tag, strip_prefix), tags)
+        for strip_prefix in (False, True)
+    )
+    return tag_match or _similarity_over_threshold(_normalise_alarm_text(description), descriptions)
+
+
+def action_alarm_mask(frame: pd.DataFrame) -> pd.Series:
+    """Return the supplied-action-alarm membership mask for a dataframe."""
+    if ALARM_TAG_COLUMN not in frame.columns or PLANT_COLUMN not in frame.columns:
+        return pd.Series(False, index=frame.index)
+    tags = frame[ALARM_TAG_COLUMN].fillna("").astype(str)
+    descriptions = frame.get(ALARM_DESCRIPTION_COLUMN, pd.Series("", index=frame.index)).fillna("").astype(str)
+    candidate = frame[PLANT_COLUMN].fillna("").astype(str).str.strip().str.upper().isin(ACTION_ALARM_PLANTS)
+    result = pd.Series(False, index=frame.index)
+    if not candidate.any():
+        return result
+    result.loc[candidate] = [
+        is_action_alarm_point(tag, description)
+        for tag, description in zip(tags.loc[candidate], descriptions.loc[candidate])
+    ]
+    return result
 
 
 def excluded_alarm_description(description: object) -> bool:
@@ -49,15 +116,8 @@ def excluded_alarm_description(description: object) -> bool:
 
 
 def filter_alarm_records(frame: pd.DataFrame) -> pd.DataFrame:
-    """Apply SOP exclusions except for action-alarm plants.
-
-    A frame without ``PLANT`` retains the conservative legacy behaviour so
-    callers cannot accidentally bypass the policy merely by omitting context.
-    """
+    """Apply SOP exclusions, retaining action-alarm points over 80% similar."""
     if frame.empty or ALARM_DESCRIPTION_COLUMN not in frame.columns:
         return frame.copy()
     excluded = frame[ALARM_DESCRIPTION_COLUMN].map(excluded_alarm_description)
-    if PLANT_COLUMN not in frame.columns:
-        return frame.loc[~excluded].copy()
-    action_plant = frame[PLANT_COLUMN].map(canonical_alarm_plant).isin(ACTION_ALARM_PLANTS)
-    return frame.loc[~excluded | action_plant].copy()
+    return frame.loc[~excluded | action_alarm_mask(frame)].copy()

@@ -395,7 +395,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'action-alarm-exemption-20260806-1';
+var CACHE_EPOCH = 'action-alarm-fuzzy-match-20260806-2';
 
 (function resetOldFrontendCache() {
   try {
@@ -702,7 +702,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=action-alarm-exemption-20260806-1', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=action-alarm-fuzzy-match-20260806-2', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
