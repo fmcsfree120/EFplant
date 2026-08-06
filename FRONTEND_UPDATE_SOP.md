@@ -32,6 +32,50 @@ The alternate URL `https://cruz6739.github.io/forsevice-netlify/` did not contai
 
 A second structural issue is that `.gitignore` ignores `*.py`, so source fixes in `generate_dashboard.py` are local-only unless explicitly force-added or separately documented. Generated static files can still be pushed, but the rule change itself is not preserved in Git by default.
 
+## GitHub Pages Build Recovery (2026-08-06)
+
+### Symptom and evidence
+
+`git push origin main` can succeed while the canonical Pages URL still serves an
+older `service-worker.js`. This is a deployment failure, not automatically a
+browser-cache problem. A release is complete only after the canonical Pages URL
+and its service worker expose the new version tokens.
+
+On 2026-08-06 the legacy Pages builder entered `errored` status even for an
+automatic update that changed only `data.enc` and `health.json`. The last
+successful public version consequently remained online. Use the authenticated
+GitHub API to inspect Pages configuration, legacy builds, and Actions runs:
+
+```text
+GET /repos/fmcsfree120/EFplant/pages
+GET /repos/fmcsfree120/EFplant/pages/builds?per_page=5
+GET /repos/fmcsfree120/EFplant/actions/workflows/deploy-pages.yml/runs?per_page=3
+```
+
+Do not print or persist the Git credential token while making these checks.
+
+### Confirmed release discipline (2026-08-06)
+
+The standard publishing source is the existing `main` branch at repository
+root (`main /`). Do not create a temporary Pages branch, switch the Pages
+source, add a replacement workflow, deactivate deployments, delete the Pages
+site, or retry multiple deployment paths as a first response to a delay.
+
+For a normal release, regenerate the approved public frontend files, stage only
+those files, commit and push `main`, then request or wait for the Pages build.
+Keep the currently serving site in place while the replacement is processed.
+
+The Pages build API may retain an `errored` legacy-build status even when the
+canonical URL is serving the newly pushed static files. Therefore a release is
+not judged from Git push or build status alone: verify the canonical URL,
+service-worker version token, and SHA-256 hashes of `data.enc` and
+`health.json` against the local committed files.
+
+If the canonical files do not match after a single `main` build request, stop
+configuration churn and preserve the live site. Escalate through the
+organization's GitHub administrator or support entitlement rather than opening
+branches or changing publishing mechanisms.
+
 ## Standard Update Procedure
 
 Every completed frontend source modification must run this procedure
