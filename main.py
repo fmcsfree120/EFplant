@@ -538,6 +538,7 @@ OTHER_ALARM_TABLES = {
     'S2A': 'ALM_S2A',
     'S3': 'ALM_S3',
     'T2A': 'ALM_T2A',
+    'TH': 'ALM_TH',
 }
 
 

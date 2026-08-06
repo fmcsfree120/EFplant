@@ -245,7 +245,7 @@ trend compilation, or frontend navigation generation.
 - KF1 keeps its established `ALM_KF` ingestion path and dedicated
   `latest_alarm_history_backup.csv`; other plants must never be relabeled or
   merged into that file.
-- HF, HJ1, HJ2, LC2, LC3, PCB, S2, S2A, S3, and T2A use their matching
+- HF, HJ1, HJ2, LC2, LC3, PCB, S2, S2A, S3, T2A, and TH use their matching
   `ALM_DB.dbo.ALM_*` tables and the separate
   `latest_alarm_history_other_backup.csv`.
 - Every plant uses the same alarm-risk calculations and presentation, but the

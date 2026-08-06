@@ -180,7 +180,7 @@ def update_known_equipment(df_actual: pd.DataFrame, script_dir: str):
 
 CONNECTED_ALARM_PLANTS = {
     "KF1", "HF", "HJ1", "HJ2", "LC2", "LC3",
-    "PCB", "S2", "S2A", "S3", "T2A",
+    "PCB", "S2", "S2A", "S3", "T2A", "TH",
 }
 
 
@@ -821,7 +821,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 's2-filter-clause-20260806-5';
+var CACHE_EPOCH = 'alm-th-20260806-1';
 
 (function resetOldFrontendCache() {
   try {
@@ -1128,7 +1128,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=s2-filter-clause-20260806-5', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=alm-th-20260806-1', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
