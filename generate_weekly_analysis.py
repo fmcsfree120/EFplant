@@ -86,7 +86,7 @@ FLATLINE_CHECK_TEXT = "應檢查儀表與通訊數據流是否故障(Keep Last)"
 DATA_GAP_MIN_HOURS = 1.0
 FLATLINE_MIN_HOURS = 48.0
 ZERO_MIN_HOURS = 4.0
-ALARM_CONNECTED_PLANTS = {"KF1", "HF", "HJ1", "HJ2", "LC2", "LC3", "PCB", "S2", "S2A", "S3", "T2A"}
+ALARM_CONNECTED_PLANTS = {"KF1", "HF", "HJ1", "HJ2", "LC2", "LC3", "PCB", "S2", "S2A", "S3", "T2A", "TH"}
 EXCLUDED_REPORT_TERMS = ("冰機", "冰水主機", "空壓", "CDA", "供藥", "化學", "H2SO4", "H2O2", "HNO3", "HCL", "NaOH", "Na2CO3", "MGCB")
 
 
