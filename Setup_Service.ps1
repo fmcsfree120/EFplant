@@ -2,14 +2,24 @@
 # 右鍵 → 以系統管理員身份執行 PowerShell，然後執行此腳本
 
 $taskName = "EFplant AutoUpdate"
-$vbsPath  = "C:\Users\U01572\Documents\EFplant\run_background.vbs"
+$projectDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$pythonPath = Join-Path $projectDir ".venv\Scripts\python.exe"
+$mainPath   = Join-Path $projectDir "main.py"
+$runAsUser  = "$env:USERDOMAIN\$env:USERNAME"
+
+if (-not (Test-Path -LiteralPath $pythonPath)) {
+    throw "找不到虛擬環境 Python：$pythonPath"
+}
 
 Write-Host "=== EFplant 工作排程器設定 ===" -ForegroundColor Cyan
 
 # 移除舊任務並重建（含完整設定）
 Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
 
-$action   = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "`"$vbsPath`""
+$action   = New-ScheduledTaskAction `
+    -Execute $pythonPath `
+    -Argument "`"$mainPath`"" `
+    -WorkingDirectory $projectDir
 $trigger  = New-ScheduledTaskTrigger -AtStartup
 $settings = New-ScheduledTaskSettingsSet `
     -ExecutionTimeLimit  ([TimeSpan]::Zero) `
@@ -19,7 +29,7 @@ $settings = New-ScheduledTaskSettingsSet `
     -MultipleInstances   IgnoreNew
 
 $principal = New-ScheduledTaskPrincipal `
-    -UserId    "U01572" `
+    -UserId    $runAsUser `
     -LogonType S4U `
     -RunLevel  Highest
 
@@ -40,5 +50,5 @@ Write-Host "執行身份 : $($t.Principal.UserId) / $($t.Principal.LogonType)"
 Write-Host "失敗重啟 : $($t.Settings.RestartCount) 次，間隔 $($t.Settings.RestartInterval)"
 
 Write-Host ""
-Write-Host "完成！下次開機後服務將自動啟動。" -ForegroundColor Green
-pause
+Write-Host "完成！現在立即啟動，之後每次開機也會自動啟動。" -ForegroundColor Green
+Start-ScheduledTask -TaskName $taskName

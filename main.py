@@ -14,6 +14,7 @@ import re
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime
 import warnings
+import traceback
 from urllib.parse import urlparse, parse_qs
 
 # ── 強制 stdout/stderr 以 UTF-8 輸出 ────────────────────────────────
@@ -31,6 +32,44 @@ _INDEX_ID_MAP = {}
 _INDEX_MAP_LOCK = threading.Lock()
 _SIGNLOG_LOCK = threading.Lock()
 LOGIN_AUDIT_ENABLED = False
+_RUNTIME_LOG_HANDLE = None
+
+
+class _TeeStream:
+    """Write scheduler output to both its original stream and a persistent log."""
+
+    def __init__(self, original, log_handle):
+        self.original = original
+        self.log_handle = log_handle
+
+    def write(self, text):
+        try:
+            self.original.write(text)
+        except Exception:
+            pass
+        self.log_handle.write(text)
+        self.log_handle.flush()
+        return len(text)
+
+    def flush(self):
+        try:
+            self.original.flush()
+        except Exception:
+            pass
+        self.log_handle.flush()
+
+    def isatty(self):
+        return False
+
+
+def configure_runtime_logging():
+    """Persist background scheduler output so a future stop has evidence."""
+    global _RUNTIME_LOG_HANDLE
+    log_path = os.path.join(SCRIPT_DIR, "efplant_autoupdate.log")
+    _RUNTIME_LOG_HANDLE = open(log_path, "a", encoding="utf-8", buffering=1)
+    sys.stdout = _TeeStream(sys.stdout, _RUNTIME_LOG_HANDLE)
+    sys.stderr = _TeeStream(sys.stderr, _RUNTIME_LOG_HANDLE)
+    print(f"\n[{datetime.now():%Y-%m-%d %H:%M:%S}] EFplant scheduler process started")
 
 SIGNLOG_HEADERS = ["Timestamp", "Action", "User_Name", "Device_ID", "Session_ID", "Duration", "Client_IP"]
 
@@ -430,9 +469,9 @@ def has_unpushed_main_commits():
 
 def flush_pending_release():
     """Push only when the repository-local pre-push gate permits one release."""
-    if not has_unpushed_main_commits():
-        return False
     try:
+        if not has_unpushed_main_commits():
+            return False
         subprocess.run(["git", "push", "origin", "main"], cwd=SCRIPT_DIR, check=True)
         print("[OK] 單一佇列已釋放，已推送待發布的前端更新。")
         return True
@@ -441,7 +480,22 @@ def flush_pending_release():
         if exc.returncode == 75:
             print("[DEFERRED] Pages 正在部署；保留本機已提交更新，稍後自動重試。")
             return False
-        raise
+        print(f"[WARN] 發布重試失敗，排程將繼續運行並於稍後再試: {exc}")
+        return False
+    except Exception as exc:
+        # A transient git/network failure must never terminate the data scheduler.
+        print(f"[WARN] 檢查待發布版本失敗，排程將繼續運行並於稍後再試: {exc}")
+        return False
+
+
+def run_resilient_job(job_name, job_func):
+    """Keep one scheduled job failure from stopping every future update."""
+    try:
+        return job_func()
+    except Exception as exc:
+        print(f"[ERROR] 排程工作 {job_name} 執行失敗；主程序仍會繼續: {exc}")
+        traceback.print_exc()
+        return None
 
 
 # ── 備份資料重建（MSSQL 失敗但帳號異動時使用）────────────────────────────────
@@ -859,6 +913,7 @@ def fetch_data_and_update():
 # ── 程式進入點 ────────────────────────────────────────────────────────────────
 
 def main():
+    configure_runtime_logging()
     acquire_single_instance_lock()   # 確保只有一個實例在執行
     print("=" * 52)
     print("  EFplant 自動化排程服務 啟動")
@@ -872,16 +927,16 @@ def main():
     api_thread.start()
 
     # 啟動時立即執行一次
-    fetch_data_and_update()
+    run_resilient_job("startup-update", fetch_data_and_update)
 
     # 排程：每小時整點（:00）與每半點（:30）各執行一次。
     # fetch_data_and_update 會先更新警報，再重建並發布設備狀態與風險總覽。
     # 註：趨勢資料時間戳仍以 floor('h') 對齊整點，故運轉率等趨勢圖 X 軸維持每小時、不受影響。
-    schedule.every().hour.at(":00").do(fetch_data_and_update)
-    schedule.every().hour.at(":30").do(fetch_data_and_update)
+    schedule.every().hour.at(":00").do(run_resilient_job, "half-hour-update", fetch_data_and_update)
+    schedule.every().hour.at(":30").do(run_resilient_job, "half-hour-update", fetch_data_and_update)
     # A deferred auto-update is retried after the prior Pages deployment ends;
     # this prevents a second push from cancelling the active deployment.
-    schedule.every(2).minutes.do(flush_pending_release)
+    schedule.every(2).minutes.do(run_resilient_job, "release-retry", flush_pending_release)
 
     next_run = schedule.next_run()
     print(f"\n排程已設定：設備狀態與 KF1 廠區運行風險總覽每 30 分鐘同步更新。")

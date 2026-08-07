@@ -44,6 +44,7 @@ weekly_report_memory.json
 localcontext/
 weekly_report_recipients.txt
 weekly_report_mail.log
+efplant_autoupdate.log
 *_FMCS_weekly*.pdf
 FMCS_weekly_standard.pdf
 
