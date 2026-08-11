@@ -449,6 +449,11 @@ trend compilation, or frontend navigation generation.
 - HF, HJ1, HJ2, LC2, LC3, PCB, S2, S2A, S3, T2A, and TH use their matching
   `ALM_DB.dbo.ALM_*` tables and the separate
   `latest_alarm_history_other_backup.csv`.
+- All connected alarm paths, including KF1, use the same gap recovery rule:
+  normal updates read the next 24 hours after that plant's own CSV anchor. If
+  that interval is empty but the source table has later data, the updater
+  backfills the retained 14-day interval, de-duplicates it, and logs the gap.
+  A missing interval must never permanently stall a plant's anchor.
 - Every plant uses the same alarm-risk calculations and presentation, but the
   source frame must be filtered by `PLANT` before aggregation.
 - The TOP 10 alarm-recovery panel is shared by every connected plant: display

@@ -592,6 +592,36 @@ def update_alarm_history():
             """
             incoming = pd.read_sql(query, conn, params=(anchor, anchor))
             print(f"[ALARM] 增量錨點 {anchor}，取得後續 24 小時新資料 {len(incoming)} 筆。")
+
+            # Keep the dedicated KF1 pipeline consistent with every other
+            # connected plant: a quiet period longer than 24 hours must not
+            # permanently strand the incremental anchor after data resumes.
+            if incoming.empty:
+                latest_query = """
+                SELECT MAX(ALM_NATIVETIMELAST)
+                FROM [ALM_DB].[dbo].[ALM_KF]
+                """
+                latest_row = pd.read_sql(latest_query, conn).iloc[0, 0]
+                source_latest = pd.to_datetime(latest_row, errors='coerce')
+                if pd.notna(source_latest) and source_latest > anchor + pd.Timedelta(hours=24):
+                    recovery_start = max(
+                        anchor,
+                        source_latest - pd.Timedelta(days=CSV_RETENTION_DAYS),
+                    )
+                    recovery_query = """
+                    SELECT * FROM [ALM_DB].[dbo].[ALM_KF]
+                    WHERE ALM_NATIVETIMELAST > %s
+                      AND ALM_NATIVETIMELAST <= %s
+                    ORDER BY ALM_NATIVETIMELAST ASC
+                    """
+                    incoming = pd.read_sql(
+                        recovery_query, conn, params=(recovery_start, source_latest)
+                    )
+                    print(
+                        f"[WARN][ALARM:KF1] 發現警報資料缺口："
+                        f"錨點 {anchor} 後 24 小時無資料，但來源最新時間為 {source_latest}；"
+                        f"已補抓 {recovery_start} 至 {source_latest}，共 {len(incoming)} 筆。"
+                    )
         else:
             query = """
             SELECT * FROM [ALM_DB].[dbo].[ALM_KF]
