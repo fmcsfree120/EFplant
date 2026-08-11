@@ -457,9 +457,11 @@ trend compilation, or frontend navigation generation.
 - Every plant uses the same alarm-risk calculations and presentation, but the
   source frame must be filtered by `PLANT` before aggregation.
 - Alarm panels use the alarm CSV file modification time as the last successful
-  synchronization time. The seven-day trend is anchored to that time, and the
-  24-hour heatmap plus both TOP 10 panels use the actual preceding 24 hours;
-  they must never move their window backward to end at the last alarm event.
+  synchronization time. The daily trend always shows the seven completed
+  calendar days immediately before the synchronization date (today - 7 days
+  through today - 1 day), producing exactly seven comparable bars. The 24-hour
+  heatmap plus both TOP 10 panels use the actual preceding 24 hours; they must
+  never move their window backward to end at the last alarm event.
 - Display synchronization time and last valid alarm-event time as separate
   fields. A successful sync with no valid events shows an explicit empty state.
   If synchronization is more than two hours old, show a source-interruption

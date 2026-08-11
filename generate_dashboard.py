@@ -263,8 +263,16 @@ def build_kf1_alarm_dashboard(script_dir: str, plant: str = "KF1") -> str:
 
         last_event_time = alarms["TIME"].max()
         last_event_hours = max(0.0, (now_time - last_event_time).total_seconds() / 3600)
-        daily_start = sync_time.normalize() - pd.Timedelta(days=6)
-        period_alarms = alarms[(alarms["TIME"] >= daily_start) & (alarms["TIME"] <= sync_time)].copy()
+        # Daily comparison uses seven completed calendar days.  Exclude the
+        # still-changing synchronization day so every plant always shows seven
+        # directly comparable full-day bars (for example 08/04 through 08/10
+        # when the dashboard is synchronized on 08/11).
+        daily_end = sync_time.normalize() - pd.Timedelta(days=1)
+        daily_start = daily_end - pd.Timedelta(days=6)
+        daily_limit = daily_end + pd.Timedelta(days=1)
+        period_alarms = alarms[
+            (alarms["TIME"] >= daily_start) & (alarms["TIME"] < daily_limit)
+        ].copy()
         top10_cutoff = sync_time - pd.Timedelta(hours=24)
         top10_alarms = alarms[
             (alarms["TIME"] >= top10_cutoff) & (alarms["TIME"] <= sync_time)
@@ -313,7 +321,7 @@ def build_kf1_alarm_dashboard(script_dir: str, plant: str = "KF1") -> str:
         # The alarm CSV retains a longer history for reporting, but the dashboard
         # must present a comparable, fixed seven-calendar-day trend per plant.
         daily_source = period_alarms
-        daily_dates = pd.date_range(daily_start, sync_time.normalize(), freq="D")
+        daily_dates = pd.date_range(daily_start, daily_end, freq="D")
         daily = (daily_source.assign(DATE=daily_source["TIME"].dt.normalize())
                        .groupby("DATE", sort=True)
                        .agg(TOTAL=("TIME", "size"),
@@ -400,7 +408,7 @@ def build_kf1_alarm_dashboard(script_dir: str, plant: str = "KF1") -> str:
         return f"""
   <section class="alarm-hero">
     <div><div class="alarm-eyebrow">{html.escape(plant)} · iFIX ALARM RISK</div><h2>廠區運行風險總覽</h2>
-      <p>{daily_start.strftime('%Y/%m/%d 00:00')} – {sync_time.strftime('%Y/%m/%d %H:%M')} · 固定最近 7 日警報事件</p></div>
+      <p>{daily_start.strftime('%Y/%m/%d')} – {daily_end.strftime('%Y/%m/%d')} · 最近 7 個完整日警報事件</p></div>
     <div class="alarm-status-times">
       <div class="alarm-freshness {sync_class}"><span>資料同步時間</span><b>{sync_time.strftime('%m/%d %H:%M')}</b><small>{sync_age_hours:.1f} 小時前 · {sync_status}</small></div>
       <div class="alarm-freshness event"><span>最後有效警報</span><b>{last_event_time.strftime('%m/%d %H:%M')}</b><small>{last_event_hours:.1f} 小時前</small></div>
@@ -845,7 +853,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'alarm-sync-window-20260811-1';
+var CACHE_EPOCH = 'alarm-complete-days-20260811-1';
 
 (function resetOldFrontendCache() {
   try {
