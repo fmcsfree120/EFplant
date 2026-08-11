@@ -345,7 +345,7 @@ def build_kf1_alarm_dashboard(script_dir: str, plant: str = "KF1") -> str:
           <div class="alarm-bar"><i style="width:{width:.1f}%"></i></div>
         </div>""")
         if not risk_rows:
-            risk_rows.append('<div class="alarm-panel-empty">近 24 小時無有效警報</div>')
+            risk_rows.append('<div class="alarm-panel-empty">近 24 小時無高風險警報</div>')
 
         daily_max = max(int(daily["TOTAL"].max()) if not daily.empty else 1, 1)
         daily_bars = []
@@ -853,7 +853,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'alarm-complete-days-20260811-1';
+var CACHE_EPOCH = 'alarm-high-risk-wording-20260811-1';
 
 (function resetOldFrontendCache() {
   try {

@@ -466,6 +466,8 @@ trend compilation, or frontend navigation generation.
   fields. A successful sync with no valid events shows an explicit empty state.
   If synchronization is more than two hours old, show a source-interruption
   warning and suppress zero-alarm and risk-ranking interpretations.
+- The empty state for the TOP 10 high-risk-equipment panel is worded
+  `近 24 小時無高風險警報`; do not describe it as an absence of all valid alarms.
 - The TOP 10 alarm-recovery panel is shared by every connected plant: display
   only individual recoveries lasting at least 30 minutes, rank by duration,
   and show up to 10 records without padding short-duration entries.
