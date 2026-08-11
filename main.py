@@ -498,6 +498,42 @@ def run_resilient_job(job_name, job_func):
         return None
 
 
+def main_source_revision():
+    """Return the on-disk main.py revision used for safe scheduler reloads."""
+    try:
+        return os.stat(os.path.abspath(__file__)).st_mtime_ns
+    except OSError as exc:
+        print(f"[WARN] 無法讀取 main.py 版本，略過自動重載檢查: {exc}")
+        return None
+
+
+def reload_if_main_changed(start_revision):
+    """Replace this idle scheduler process after main.py is updated on disk.
+
+    This runs only between scheduled jobs, after their CSV/dashboard/publish
+    work has returned.  Re-exec keeps the OS process identity while loading the
+    revised source, so routine source updates do not require a task restart.
+    """
+    current_revision = main_source_revision()
+    if start_revision is None or current_revision is None or current_revision == start_revision:
+        return start_revision
+
+    print("[INFO] 偵測到 main.py 已更新；本輪工作已完成，正在自動重載新版排程服務。")
+    global _LOCK_SOCKET, _RUNTIME_LOG_HANDLE
+    if _RUNTIME_LOG_HANDLE is not None:
+        try:
+            _RUNTIME_LOG_HANDLE.flush()
+            _RUNTIME_LOG_HANDLE.close()
+        except Exception:
+            pass
+    if _LOCK_SOCKET is not None:
+        try:
+            _LOCK_SOCKET.close()
+        except Exception:
+            pass
+    os.execv(sys.executable, [sys.executable, os.path.abspath(__file__), *sys.argv[1:]])
+
+
 # ── 備份資料重建（MSSQL 失敗但帳號異動時使用）────────────────────────────────
 
 def regen_from_backup(reason="account sync"):
@@ -945,6 +981,7 @@ def fetch_data_and_update():
 def main():
     configure_runtime_logging()
     acquire_single_instance_lock()   # 確保只有一個實例在執行
+    source_revision = main_source_revision()
     print("=" * 52)
     print("  EFplant 自動化排程服務 啟動")
     print("=" * 52)
@@ -977,6 +1014,7 @@ def main():
     try:
         while True:
             schedule.run_pending()
+            source_revision = reload_if_main_changed(source_revision)
             time.sleep(20)  # 每 20 秒檢查一次，確保整點準時觸發
     except KeyboardInterrupt:
         print("\n服務已停止。")
