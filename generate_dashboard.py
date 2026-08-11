@@ -826,7 +826,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'remove-dp-tab-20260807-1';
+var CACHE_EPOCH = 'bookmark-branding-20260811-1';
 
 (function resetOldFrontendCache() {
   try {
@@ -1133,7 +1133,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=remove-dp-tab-20260807-1', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=bookmark-branding-20260811-1', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
