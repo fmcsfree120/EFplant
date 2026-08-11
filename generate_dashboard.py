@@ -255,15 +255,38 @@ def build_kf1_alarm_dashboard(script_dir: str, plant: str = "KF1") -> str:
         if alarms.empty:
             raise ValueError("CSV 沒有有效時間資料")
 
-        abnormal = alarms[alarms["ALM_ALMSTATUS"] != "OK"]
+        sync_time = pd.Timestamp(datetime.fromtimestamp(os.path.getmtime(alarm_path)))
+        now_time = pd.Timestamp(datetime.now())
+        sync_age_hours = max(0.0, (now_time - sync_time).total_seconds() / 3600)
+        sync_class = "danger" if sync_age_hours > 2 else ("warn" if sync_age_hours > 1 else "ok")
+        sync_status = "同步中斷" if sync_age_hours > 2 else ("同步延遲" if sync_age_hours > 1 else "同步正常")
+
+        last_event_time = alarms["TIME"].max()
+        last_event_hours = max(0.0, (now_time - last_event_time).total_seconds() / 3600)
+        daily_start = sync_time.normalize() - pd.Timedelta(days=6)
+        period_alarms = alarms[(alarms["TIME"] >= daily_start) & (alarms["TIME"] <= sync_time)].copy()
+        top10_cutoff = sync_time - pd.Timedelta(hours=24)
+        top10_alarms = alarms[
+            (alarms["TIME"] >= top10_cutoff) & (alarms["TIME"] <= sync_time)
+        ].copy()
+
+        if sync_age_hours > 2:
+            return f"""
+  <section class="alarm-hero">
+    <div><div class="alarm-eyebrow">{html.escape(plant)} · iFIX ALARM RISK</div><h2>廠區運行風險總覽</h2>
+      <p>警報資料來源已超過 2 小時未完成同步；暫停顯示零警報與風險排名。</p></div>
+    <div class="alarm-status-times">
+      <div class="alarm-freshness danger"><span>資料同步時間</span><b>{sync_time.strftime('%m/%d %H:%M')}</b><small>{sync_age_hours:.1f} 小時前 · {sync_status}</small></div>
+      <div class="alarm-freshness event"><span>最後有效警報</span><b>{last_event_time.strftime('%m/%d %H:%M')}</b><small>{last_event_hours:.1f} 小時前</small></div>
+    </div>
+  </section>
+  <div class="alarm-empty"><div class="alarm-empty-title">{html.escape(plant)} 警報資料同步中斷</div><div>最後成功同步：{sync_time.strftime('%Y/%m/%d %H:%M')}。缺資料不可解讀為零警報。</div></div>"""
+
+        abnormal = period_alarms[period_alarms["ALM_ALMSTATUS"] != "OK"]
         critical = abnormal[abnormal["ALM_ALMPRIORITY"] == "CRITICAL"]
         latest_by_tag = alarms.drop_duplicates("ALM_TAGNAME", keep="last")
-        tag_count = int(alarms["ALM_TAGNAME"].nunique())
+        tag_count = int(period_alarms["ALM_TAGNAME"].nunique())
         total_count = int(len(abnormal))
-        max_time = alarms["TIME"].max()
-        min_time = alarms["TIME"].min()
-        top10_cutoff = max_time - pd.Timedelta(hours=24)
-        top10_alarms = alarms[alarms["TIME"] >= top10_cutoff].copy()
 
         # 整體風險＝各 Tag 最新狀態風險分數的平均值。
         # OK=0、CFN=30、LO/HI=60、LOLO/HIHI=90；CRITICAL 再加 10，單 Tag 上限 100。
@@ -273,13 +296,8 @@ def build_kf1_alarm_dashboard(script_dir: str, plant: str = "KF1") -> str:
         overall_risk = float(tag_risk.clip(upper=100).mean()) if len(tag_risk) else 0.0
         risk_class = "high" if overall_risk >= 60 else ("medium" if overall_risk >= 30 else "low")
 
-        expected_days = pd.date_range(min_time.normalize(), max_time.normalize(), freq="D")
-        actual_days = set(alarms["TIME"].dt.normalize().unique())
-        missing_days = [d.strftime("%m/%d") for d in expected_days if d.to_datetime64() not in actual_days]
-        coverage = ((len(expected_days) - len(missing_days)) / len(expected_days) * 100) if len(expected_days) else 0
-
         status_weights = {"HIHI": 5, "LOLO": 5, "HI": 3, "LO": 3, "CFN": 2, "OK": 0}
-        # 兩個 TOP 10 僅統計資料最新時間往前 24 小時；其他總覽維持完整保留範圍。
+        # 兩個 TOP 10 與熱區固定以本次成功同步時間往前 24 小時計算。
         work = top10_alarms.copy()
         work["RISK_POINTS"] = work["ALM_ALMSTATUS"].map(status_weights).fillna(1)
         work.loc[work["ALM_ALMPRIORITY"] == "CRITICAL", "RISK_POINTS"] += 4
@@ -294,9 +312,8 @@ def build_kf1_alarm_dashboard(script_dir: str, plant: str = "KF1") -> str:
         # 每日警報趨勢維持七日直條顯示，並納入每 30 分鐘同步的當日最新資料。
         # The alarm CSV retains a longer history for reporting, but the dashboard
         # must present a comparable, fixed seven-calendar-day trend per plant.
-        daily_start = max_time.normalize() - pd.Timedelta(days=6)
-        daily_source = alarms[alarms["TIME"] >= daily_start]
-        daily_dates = pd.date_range(daily_start, max_time.normalize(), freq="D")
+        daily_source = period_alarms
+        daily_dates = pd.date_range(daily_start, sync_time.normalize(), freq="D")
         daily = (daily_source.assign(DATE=daily_source["TIME"].dt.normalize())
                        .groupby("DATE", sort=True)
                        .agg(TOTAL=("TIME", "size"),
@@ -306,7 +323,7 @@ def build_kf1_alarm_dashboard(script_dir: str, plant: str = "KF1") -> str:
                        .rename_axis("DATE")
                        .reset_index())
         daily["DAY"] = daily["DATE"].dt.strftime("%m/%d")
-        hourly = (alarms.assign(HOUR=alarms["TIME"].dt.hour)
+        hourly = (top10_alarms.assign(HOUR=top10_alarms["TIME"].dt.hour)
                         .groupby("HOUR").size().reindex(range(24), fill_value=0))
 
         ranked_event_total = int(risk["EVENTS"].sum()) if not risk.empty else 0
@@ -319,11 +336,13 @@ def build_kf1_alarm_dashboard(script_dir: str, plant: str = "KF1") -> str:
           <div class="alarm-risk-tag">{html.escape(row['ALM_TAGNAME'])} · {int(row['EVENTS'])} 筆 · Critical {int(row['CRITICAL'])}</div>
           <div class="alarm-bar"><i style="width:{width:.1f}%"></i></div>
         </div>""")
+        if not risk_rows:
+            risk_rows.append('<div class="alarm-panel-empty">近 24 小時無有效警報</div>')
 
         daily_max = max(int(daily["TOTAL"].max()) if not daily.empty else 1, 1)
         daily_bars = []
         for _, row in daily.iterrows():
-            height = max(3, int(row["TOTAL"] / daily_max * 100))
+            height = 0 if int(row["TOTAL"]) == 0 else max(3, int(row["TOTAL"] / daily_max * 100))
             daily_bars.append(f"""
           <div class="alarm-day-col" tabindex="0" role="button" data-alarm-tip="{row['DAY']}：總計 {int(row['TOTAL'])}／異常 {int(row['ABNORMAL'])}／Critical {int(row['CRITICAL'])}">
             <div class="alarm-day-value">{int(row['TOTAL'])}</div>
@@ -343,7 +362,7 @@ def build_kf1_alarm_dashboard(script_dir: str, plant: str = "KF1") -> str:
         # OK 紀錄同時帶有警報進入與最後復歸時間，可直接計算實際復歸耗時。
         # Match full state transitions first, then keep recoveries that occurred
         # during this plant's most recent 24-hour display window.
-        recovered = build_recovery_events(alarms, top10_cutoff, max_time)
+        recovered = build_recovery_events(alarms, top10_cutoff, sync_time)
 
         # 每個 Tag 只取最近 24 小時內最長的一次「進入→OK」，依該次實際耗時排名。
         recovered = recovered[
@@ -376,16 +395,16 @@ def build_kf1_alarm_dashboard(script_dir: str, plant: str = "KF1") -> str:
         if not recovery_rows:
             recovery_rows.append('<tr><td colspan="5" class="alarm-all-clear">最近24小時無超過30分鐘未復歸記錄</td></tr>')
 
-        missing_text = "、".join(missing_days) if missing_days else "無"
-        freshness_hours = max(0.0, (datetime.now() - max_time.to_pydatetime()).total_seconds() / 3600)
-        freshness_class = "danger" if freshness_hours > 24 else ("warn" if freshness_hours > 2 else "ok")
         critical_note = "Priority 與 HIHI/LOLO 並非完全一致，風險分數已同時納入狀態與 Priority。"
 
         return f"""
   <section class="alarm-hero">
     <div><div class="alarm-eyebrow">{html.escape(plant)} · iFIX ALARM RISK</div><h2>廠區運行風險總覽</h2>
-      <p>{min_time.strftime('%Y/%m/%d %H:%M')} – {max_time.strftime('%Y/%m/%d %H:%M')} · 最近 7 日警報事件</p></div>
-    <div class="alarm-freshness {freshness_class}"><span>資料最後更新</span><b>{freshness_hours:.1f} 小時前</b></div>
+      <p>{daily_start.strftime('%Y/%m/%d 00:00')} – {sync_time.strftime('%Y/%m/%d %H:%M')} · 固定最近 7 日警報事件</p></div>
+    <div class="alarm-status-times">
+      <div class="alarm-freshness {sync_class}"><span>資料同步時間</span><b>{sync_time.strftime('%m/%d %H:%M')}</b><small>{sync_age_hours:.1f} 小時前 · {sync_status}</small></div>
+      <div class="alarm-freshness event"><span>最後有效警報</span><b>{last_event_time.strftime('%m/%d %H:%M')}</b><small>{last_event_hours:.1f} 小時前</small></div>
+    </div>
   </section>
   <div class="alarm-kpis">
     <div class="alarm-kpi red"><span>告警總計</span><b>{total_count:,}</b></div>
@@ -405,8 +424,8 @@ def build_kf1_alarm_dashboard(script_dir: str, plant: str = "KF1") -> str:
       <div class="alarm-table-wrap"><table class="alarm-table"><thead><tr><th>#</th><th>設備／訊息</th><th>警報發生</th><th>復歸時間</th><th>最長單次耗時</th></tr></thead><tbody>{''.join(recovery_rows)}</tbody></table></div></section>
   </div>
   <section class="alarm-data-health">
-    <div><span>資料涵蓋率</span><b>{coverage:.0f}%</b></div><div><span>缺資料日期</span><b>{missing_text}</b></div>
-    <p>注意：缺資料不可解讀為零警報。{critical_note}</p>
+    <div><span>同步狀態</span><b>{sync_status}</b></div><div><span>近 24 小時有效事件</span><b>{len(top10_alarms):,} 筆</b></div>
+    <p>沒有新事件不代表資料中斷；同步逾時才停止零警報與排名判讀。{critical_note}</p>
   </section>"""
     except Exception as exc:
         print(f"[WARN] {plant} 警報儀表板建立失敗: {exc}")
@@ -826,7 +845,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'bookmark-branding-20260811-1';
+var CACHE_EPOCH = 'alarm-sync-window-20260811-1';
 
 (function resetOldFrontendCache() {
   try {
@@ -3076,7 +3095,9 @@ footer{{
 .alarm-eyebrow{{font-family:var(--mono);font-size:.65rem;letter-spacing:1.2px;color:#fb7185;font-weight:700;}}
 .alarm-freshness{{min-width:112px;text-align:right;padding:8px 10px;border-radius:5px;border:1px solid var(--bd);background:rgba(15,23,42,.72);}}
 .alarm-freshness span{{display:block;color:var(--dim);font-size:.62rem;}}.alarm-freshness b{{display:block;margin-top:4px;font-family:var(--mono);font-size:.78rem;}}
+.alarm-freshness small{{display:block;margin-top:3px;color:var(--dim);font:500 .56rem var(--mono);}}.alarm-status-times{{display:flex;gap:8px;align-items:stretch;}}
 .alarm-freshness.ok b{{color:var(--run);}}.alarm-freshness.warn b{{color:var(--amb);}}.alarm-freshness.danger b{{color:#fb7185;}}
+.alarm-freshness.event b{{color:#93c5fd;}}
 .alarm-kpis{{display:grid;grid-template-columns:repeat(2,1fr);gap:7px;margin-bottom:10px;}}@media(min-width:920px){{.alarm-kpis{{grid-template-columns:repeat(4,1fr);}}}}
 .alarm-kpi{{padding:11px 12px;background:var(--sf);border:1px solid var(--bd);border-top:3px solid;border-radius:6px;display:flex;flex-direction:column;gap:3px;}}
 .alarm-kpi span{{font-size:.65rem;color:var(--dim);font-weight:700;}}.alarm-kpi b{{font:700 1.45rem var(--mono);}}.alarm-kpi small{{font-size:.6rem;color:var(--dim);}}
@@ -3098,6 +3119,7 @@ footer{{
 .alarm-touch-tip{{position:fixed;z-index:10050;max-width:min(290px,calc(100vw - 24px));padding:9px 11px;background:#020617;color:#f8fafc;border:1px solid #64748b;border-radius:6px;box-shadow:0 10px 28px rgba(0,0,0,.58);font:700 .7rem/1.45 var(--mono);pointer-events:none;opacity:0;transform:translateY(5px);transition:opacity .12s,transform .12s;}}
 .alarm-touch-tip.show{{opacity:1;transform:translateY(0);}}
 .alarm-risk-row{{margin-bottom:10px;}}.alarm-risk-head{{display:flex;justify-content:space-between;gap:8px;font-size:.68rem;}}.alarm-risk-head span{{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}}.alarm-risk-head b{{font-family:var(--mono);color:#fb7185;white-space:nowrap;}}
+.alarm-panel-empty{{display:flex;align-items:center;justify-content:center;min-height:118px;color:var(--run);font:.72rem var(--mono);}}
 .alarm-risk-tag{{font:.56rem var(--mono);color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin:3px 0;}}.alarm-bar{{height:5px;background:#0f172a;border-radius:5px;overflow:hidden;}}.alarm-bar i{{height:100%;display:block;background:linear-gradient(90deg,#f59e0b,#f43f5e);}}
 .alarm-table-wrap{{overflow-x:auto;overflow-y:visible;max-height:none;}}.alarm-table{{width:100%;border-collapse:collapse;font-size:.64rem;}}.alarm-table th{{position:static;background:var(--sf);text-align:left;color:var(--dim);padding:6px;border-bottom:1px solid var(--bd);white-space:nowrap;}}
 .alarm-table td{{padding:7px 6px;border-bottom:1px solid var(--bd);vertical-align:top;white-space:nowrap;}}.alarm-table td:nth-child(2){{white-space:normal;min-width:150px;}}.alarm-table td small{{display:block;margin-top:2px;font:500 .54rem var(--mono);color:var(--dim);word-break:break-all;}}
@@ -3109,7 +3131,7 @@ footer{{
 .alarm-pending{{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;min-height:240px;margin-top:28px;padding:32px 20px;text-align:center;border:1px dashed var(--bd2);border-radius:8px;background:rgba(15,23,42,.28);}}
 .alarm-pending .wip-msg{{min-width:min(320px,100%);}}
 .alarm-empty{{min-height:45vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:var(--dim);border:1px dashed var(--bd2);border-radius:8px;padding:30px;}}.alarm-empty-title{{font-size:1rem;color:var(--tx);font-weight:700;margin-bottom:8px;}}
-@media(max-width:600px){{.alarm-hero{{flex-direction:column;}}.alarm-freshness{{text-align:left;}}.alarm-panel-title{{align-items:flex-start;flex-direction:column;}}.alarm-panel-title small{{text-align:left;}}.alarm-data-health{{grid-template-columns:1fr 1fr;}}.alarm-data-health p{{grid-column:1/-1;}}.alarm-table-wrap{{overflow-x:hidden;}}.alarm-table{{table-layout:fixed;font-size:.58rem;}}.alarm-table th,.alarm-table td{{padding:6px 2px;white-space:normal;word-break:break-word;}}.alarm-table th:nth-child(1){{width:8%;}}.alarm-table th:nth-child(2){{width:32%;}}.alarm-table th:nth-child(3),.alarm-table th:nth-child(4){{width:18%;}}.alarm-table th:nth-child(5){{width:24%;}}.alarm-table td:nth-child(2){{min-width:0;}}.alarm-table td small{{font-size:.48rem;overflow-wrap:anywhere;}}.alarm-rank{{width:19px;height:19px;font-size:.56rem;}}.alarm-time,.alarm-duration{{font-size:.55rem;}}}}
+@media(max-width:600px){{.alarm-hero{{flex-direction:column;}}.alarm-status-times{{width:100%;flex-direction:column;}}.alarm-freshness{{text-align:left;}}.alarm-panel-title{{align-items:flex-start;flex-direction:column;}}.alarm-panel-title small{{text-align:left;}}.alarm-data-health{{grid-template-columns:1fr 1fr;}}.alarm-data-health p{{grid-column:1/-1;}}.alarm-table-wrap{{overflow-x:hidden;}}.alarm-table{{table-layout:fixed;font-size:.58rem;}}.alarm-table th,.alarm-table td{{padding:6px 2px;white-space:normal;word-break:break-word;}}.alarm-table th:nth-child(1){{width:8%;}}.alarm-table th:nth-child(2){{width:32%;}}.alarm-table th:nth-child(3),.alarm-table th:nth-child(4){{width:18%;}}.alarm-table th:nth-child(5){{width:24%;}}.alarm-table td:nth-child(2){{min-width:0;}}.alarm-table td small{{font-size:.48rem;overflow-wrap:anywhere;}}.alarm-rank{{width:19px;height:19px;font-size:.56rem;}}.alarm-time,.alarm-duration{{font-size:.55rem;}}}}
 </style>
 </head>
 <body>
