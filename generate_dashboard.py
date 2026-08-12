@@ -98,20 +98,26 @@ def build_recovery_events(alarms: pd.DataFrame, window_start: pd.Timestamp,
     events: list[dict] = []
     for _, history in alarms.sort_values("TIME").groupby("ALM_TAGNAME", sort=False):
         active_start = None
+        active_start_value = None
         for _, row in history.iterrows():
             status = str(row["ALM_ALMSTATUS"]).strip().upper()
             event_time = row["TIME"]
             if status == "OK":
                 if active_start is not None:
                     event = row.to_dict()
+                    # VALUE must represent the alarm-entry record, not the OK
+                    # recovery record used to close the duration segment.
+                    event["ALM_VALUE"] = active_start_value
                     event["START_TIME"] = active_start
                     event["RECOVERY_TIME"] = event_time
                     event["RECOVERY_SECONDS"] = (event_time - active_start).total_seconds()
                     if window_start <= event_time <= window_end:
                         events.append(event)
                     active_start = None
+                    active_start_value = None
             elif active_start is None:
                 active_start = event_time
+                active_start_value = row.get("ALM_VALUE")
     return pd.DataFrame(events, columns=columns)
 
 
@@ -863,7 +869,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'mobile-recovery-duration-20260813-1';
+var CACHE_EPOCH = 'alarm-start-value-20260813-1';
 
 (function resetOldFrontendCache() {
   try {
@@ -1170,7 +1176,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=mobile-recovery-duration-20260813-1', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=alarm-start-value-20260813-1', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
