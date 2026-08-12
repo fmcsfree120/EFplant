@@ -863,7 +863,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'hf-trends-20260812-1';
+var CACHE_EPOCH = 'mobile-recovery-duration-20260813-1';
 
 (function resetOldFrontendCache() {
   try {
@@ -1170,7 +1170,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=hf-trends-20260812-1', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=mobile-recovery-duration-20260813-1', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
@@ -3165,7 +3165,7 @@ footer{{
 .alarm-pending{{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;min-height:240px;margin-top:28px;padding:32px 20px;text-align:center;border:1px dashed var(--bd2);border-radius:8px;background:rgba(15,23,42,.28);}}
 .alarm-pending .wip-msg{{min-width:min(320px,100%);}}
 .alarm-empty{{min-height:45vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:var(--dim);border:1px dashed var(--bd2);border-radius:8px;padding:30px;}}.alarm-empty-title{{font-size:1rem;color:var(--tx);font-weight:700;margin-bottom:8px;}}
-@media(max-width:600px){{.alarm-hero{{flex-direction:column;}}.alarm-status-times{{width:100%;flex-direction:column;}}.alarm-freshness{{text-align:left;}}.alarm-panel-title{{align-items:flex-start;flex-direction:column;}}.alarm-panel-title small{{text-align:left;}}.alarm-data-health{{grid-template-columns:1fr 1fr;}}.alarm-data-health p{{grid-column:1/-1;}}.alarm-table-wrap{{overflow-x:hidden;}}.alarm-table{{table-layout:fixed;font-size:.58rem;}}.alarm-table th,.alarm-table td{{padding:6px 2px;white-space:normal;word-break:break-word;}}.alarm-table th:nth-child(1){{width:8%;}}.alarm-table th:nth-child(2){{width:32%;}}.alarm-table th:nth-child(3),.alarm-table th:nth-child(4){{width:18%;}}.alarm-table th:nth-child(5){{width:24%;}}.alarm-table td:nth-child(2){{min-width:0;}}.alarm-table td small{{font-size:.48rem;overflow-wrap:anywhere;}}.alarm-rank{{width:19px;height:19px;font-size:.56rem;}}.alarm-time,.alarm-duration{{font-size:.55rem;}}}}
+@media(max-width:600px){{.alarm-hero{{flex-direction:column;}}.alarm-status-times{{width:100%;flex-direction:column;}}.alarm-freshness{{text-align:left;}}.alarm-panel-title{{align-items:flex-start;flex-direction:column;}}.alarm-panel-title small{{text-align:left;}}.alarm-data-health{{grid-template-columns:1fr 1fr;}}.alarm-data-health p{{grid-column:1/-1;}}.alarm-table-wrap{{overflow-x:hidden;}}.alarm-table{{table-layout:fixed;font-size:.58rem;}}.alarm-table th,.alarm-table td{{padding:6px 2px;white-space:normal;word-break:break-word;}}.alarm-table th:nth-child(1){{width:7%;}}.alarm-table th:nth-child(2){{width:29%;}}.alarm-table th:nth-child(3),.alarm-table th:nth-child(4){{width:16%;}}.alarm-table th:nth-child(5){{width:12%;}}.alarm-table th:nth-child(6){{width:20%;}}.alarm-table td:nth-child(2){{min-width:0;}}.alarm-table td small{{font-size:.48rem;overflow-wrap:anywhere;}}.alarm-rank{{width:19px;height:19px;font-size:.56rem;}}.alarm-time,.alarm-duration{{font-size:.55rem;}}}}
 </style>
 </head>
 <body>
