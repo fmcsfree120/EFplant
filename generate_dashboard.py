@@ -230,7 +230,7 @@ def build_kf1_alarm_dashboard(script_dir: str, plant: str = "KF1") -> str:
         alarms = pd.read_csv(alarm_path, encoding="utf-8-sig")
         required = {
             "ALM_NATIVETIMELAST", "ALM_TAGNAME", "ALM_DESCR",
-            "ALM_ALMSTATUS", "ALM_ALMPRIORITY"
+            "ALM_ALMSTATUS", "ALM_ALMPRIORITY", "ALM_VALUE"
         }
         missing = sorted(required - set(alarms.columns))
         if missing:
@@ -392,6 +392,15 @@ def build_kf1_alarm_dashboard(script_dir: str, plant: str = "KF1") -> str:
                 return f"{hours}時 {minutes}分"
             return f"{minutes}分 {secs}秒"
 
+        def format_alarm_value(value):
+            """Render the source ALM_VALUE without treating a missing value as zero."""
+            if pd.isna(value) or str(value).strip() == "":
+                return "—"
+            numeric_value = pd.to_numeric(pd.Series([value]), errors="coerce").iat[0]
+            if pd.notna(numeric_value):
+                return f"{float(numeric_value):,.3f}".rstrip("0").rstrip(".")
+            return str(value).strip()
+
         recovery_rows = []
         for rank, (_, row) in enumerate(recovered.iterrows(), start=1):
             recovery_rows.append(f"""
@@ -399,9 +408,10 @@ def build_kf1_alarm_dashboard(script_dir: str, plant: str = "KF1") -> str:
           <td><b>{html.escape(row['ALM_DESCR'] or row['ALM_TAGNAME'])}</b><small>{html.escape(row['ALM_TAGNAME'])} · 24小時復歸 {int(row['SEGMENTS'])} 次</small></td>
           <td class="alarm-time"><span>{row['START_TIME'].strftime('%m/%d')}</span><span>{row['START_TIME'].strftime('%H:%M:%S')}</span></td>
           <td class="alarm-time"><span>{row['RECOVERY_TIME'].strftime('%m/%d')}</span><span>{row['RECOVERY_TIME'].strftime('%H:%M:%S')}</span></td>
+          <td class="alarm-value">{html.escape(format_alarm_value(row.get('ALM_VALUE')))}</td>
           <td class="alarm-duration">{format_recovery_duration(row['RECOVERY_SECONDS'])}</td></tr>""")
         if not recovery_rows:
-            recovery_rows.append('<tr><td colspan="5" class="alarm-all-clear">最近24小時無超過30分鐘未復歸記錄</td></tr>')
+            recovery_rows.append('<tr><td colspan="6" class="alarm-all-clear">最近24小時無超過30分鐘未復歸記錄</td></tr>')
 
         critical_note = "Priority 與 HIHI/LOLO 並非完全一致，風險分數已同時納入狀態與 Priority。"
 
@@ -429,7 +439,7 @@ def build_kf1_alarm_dashboard(script_dir: str, plant: str = "KF1") -> str:
   <div class="alarm-grid">
     <section class="alarm-panel"><div class="alarm-panel-title"><span>TOP 10 高風險設備</span><small>最近24小時；警報越嚴重、同一設備發生次數越多，排名越前面</small></div>{''.join(risk_rows)}</section>
     <section class="alarm-panel"><div class="alarm-panel-title"><span>TOP 10 警報復歸耗時</span><small>最近24小時；從警報發生到恢復正常所花的時間，時間越長排名越前面</small></div>
-      <div class="alarm-table-wrap"><table class="alarm-table"><thead><tr><th>#</th><th>設備／訊息</th><th>警報發生</th><th>復歸時間</th><th>最長單次耗時</th></tr></thead><tbody>{''.join(recovery_rows)}</tbody></table></div></section>
+      <div class="alarm-table-wrap"><table class="alarm-table"><thead><tr><th>#</th><th>設備／訊息</th><th>警報發生</th><th>復歸時間</th><th>VALUE</th><th>最長單次耗時</th></tr></thead><tbody>{''.join(recovery_rows)}</tbody></table></div></section>
   </div>
   <section class="alarm-data-health">
     <div><span>同步狀態</span><b>{sync_status}</b></div><div><span>近 24 小時有效事件</span><b>{len(top10_alarms):,} 筆</b></div>
@@ -853,7 +863,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'alarm-high-risk-wording-20260811-1';
+var CACHE_EPOCH = 'alarm-recovery-value-20260812-1';
 
 (function resetOldFrontendCache() {
   try {
@@ -1160,7 +1170,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=bookmark-branding-20260811-1', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=alarm-recovery-value-20260812-1', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
