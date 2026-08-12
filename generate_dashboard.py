@@ -863,7 +863,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'alarm-recovery-value-20260812-1';
+var CACHE_EPOCH = 'hf-trends-20260812-1';
 
 (function resetOldFrontendCache() {
   try {
@@ -1170,7 +1170,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=alarm-recovery-value-20260812-1', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=hf-trends-20260812-1', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
@@ -1197,6 +1197,7 @@ _CHEM_LEVEL_TOKEN = re.compile(r'(?:LT\d|_LT(?:_|\b)|_LS_|_LS(?:_|\b)|LS_\d|LIT|
 # 可辨識為大宗化學品的名稱（EQNAME 正規化後比對；如需新增化學品/產品代號於此擴充）
 _CHEM_NAME = re.compile(
     r'^(H2O2|H2SO4|H3PO4|HCL|HF|HNO3|NH4OH|NA2CO3|NACLO3|NACIO3|'
+    r'CUSO4|FECL3|MM6800|'
     r'NACLO|NAOH\d*|KOH|IPA|SPS|SPM|SPST|NH3|ROU|SN|'
     r'CE\d+R?|CM\d+R?|CS\d+R?|CZ\w+)$'
 )
@@ -1223,6 +1224,10 @@ def chem_chart_key(norm_name):
     NaOH 各濃度(NAOH/NAOH15/NAOH32/NAOH45)統一歸到同一張『NaOH』圖；
     濃度則作為同廠區多槽的線別後綴(如 '15%')，避免同廠區多濃度互相覆蓋。
     其餘化學品：圖表名稱=合併鍵本身、無濃度後綴。"""
+    if "::" in norm_name:
+        chart_name, series_suffix = norm_name.split("::", 1)
+        canonical_chart, _ = chem_chart_key(chart_name)
+        return (canonical_chart, series_suffix)
     m = re.match(r'^NAOH(\d*)$', norm_name)
     if m:
         conc = m.group(1)
@@ -1424,6 +1429,15 @@ def classify_quality_row(tagname, eqname, plant="", description=""):
     if plant_code == "HJ2" and tag == "HJ2.WAT_PH.F_CV":
         return ("廢水處理", "出口pH")
 
+    # HF 的 EQNAME 以尾碼 _1／_2 表示同化學品的不同槽。圖表仍依化學品
+    # 跨廠合併，槽號只作為 HF 廠內的線別後綴，避免兩槽資料互相覆蓋。
+    if plant_code == "HF" and _CHEM_LEVEL_TOKEN.search(tag):
+        hf_chem = re.fullmatch(r"(.+)_([12])", eq.strip(), re.IGNORECASE)
+        if hf_chem:
+            chem_name = _norm_chem(hf_chem.group(1))
+            if _CHEM_NAME.match(chem_name):
+                return ("大宗化學品", f"{chem_name}::槽{hf_chem.group(2)}")
+
     # ── ① 大宗化學品（最優先）─────────────────────────────────────────────
     # Convention A：EQNAME 標示「大宗化學品」，化學品名稱嵌於 TAGNAME (..._<NAME>_TANK_...)
     if "大宗化學品" in eq:
@@ -1457,6 +1471,8 @@ def classify_quality_row(tagname, eqname, plant="", description=""):
         return ("廢水處理", eq)
     if str(plant).strip().upper() == "TH" and ("_WT_" in tag or ".WT_" in tag) and "_PH" in tag:
         return ("廢水處理", eq)
+    if plant_code == "HF" and ("_WT_" in tag or ".WT_" in tag) and "_PH" in tag:
+        return ("廢水處理", eq)
 
     # ── ③ 廠區用電（MW 功率點；排除冰機/空壓能效的 KW/KWH 比值）──────────────
     power_tokens = ("MGCB", "_MW", ".MW", "PWR", "_PW_")
@@ -1483,7 +1499,7 @@ def compile_quality_data(script_dir, force_base_time=None):
     import math
     
     # Trend plants
-    PLANTS = ["T2A", "S2A", "PCB", "S2", "S3", "HJ1", "HJ2", "LC2", "LC3", "TH", "KF1"]
+    PLANTS = ["T2A", "S2A", "PCB", "S2", "S3", "HJ1", "HJ2", "LC2", "LC3", "TH", "HF", "KF1"]
     
     # Load actual backup if it exists first
     df_q = pd.DataFrame()
@@ -3379,7 +3395,7 @@ function switchPlant(id){{
 }}
 
 // ── ECharts Trend Logic (SPA Integration) ─────────────────────────
-const PLANTS = ["T2A", "S2A", "PCB", "S2", "S3", "HJ1", "HJ2", "LC2", "LC3", "TH", "KF1"];
+const PLANTS = ["T2A", "S2A", "PCB", "S2", "S3", "HJ1", "HJ2", "LC2", "LC3", "TH", "HF", "KF1"];
 const PLANT_COLORS = {{
   "T2A": "#38bdf8",
   "S2A": "#10b981",
@@ -3391,6 +3407,7 @@ const PLANT_COLORS = {{
   "LC2": "#3b82f6",
   "LC3": "#14b8a6",
   "TH":  "#f97316",
+  "HF":  "#84cc16",
   "KF1": "#facc15",
   "HJ":  "#06b6d4"
 }};
