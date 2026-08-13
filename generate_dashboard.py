@@ -258,6 +258,11 @@ def build_kf1_alarm_dashboard(script_dir: str, plant: str = "KF1") -> str:
         # overview: KPI summary, daily/hourly trends, both TOP 10 panels and
         # data coverage must all use the same filtered records.
         alarms = filter_alarm_records(alarms)
+        # Normalize single-letter source aliases consistently for every plant.
+        alarms["ALM_ALMSTATUS"] = (
+            alarms["ALM_ALMSTATUS"].astype(str).str.strip().str.upper()
+            .replace({"H": "HI", "L": "LO"})
+        )
         if alarms.empty:
             raise ValueError("CSV 沒有有效時間資料")
 
@@ -302,23 +307,37 @@ def build_kf1_alarm_dashboard(script_dir: str, plant: str = "KF1") -> str:
         tag_count = int(period_alarms["ALM_TAGNAME"].nunique())
         total_count = int(len(abnormal))
 
-        # 整體風險＝各 Tag 最新狀態風險分數的平均值。
-        # OK=0、CFN=30、LO/HI=60、LOLO/HIHI=90；CRITICAL 再加 10，單 Tag 上限 100。
-        current_risk_weights = {"OK": 0, "CFN": 30, "LO": 60, "HI": 60, "LOLO": 90, "HIHI": 90}
-        tag_risk = latest_by_tag["ALM_ALMSTATUS"].map(current_risk_weights).fillna(30).astype(float)
-        tag_risk += (latest_by_tag["ALM_ALMPRIORITY"] == "CRITICAL").astype(int) * 10
+        # 整體風險＝排除 HI/LO 後，各 Tag 最新狀態風險分數的平均值。
+        # OK=0、CFN=30、LOLO/HIHI=90；CRITICAL 再加 10，單 Tag 上限 100。
+        risk_source = latest_by_tag[~latest_by_tag["ALM_ALMSTATUS"].isin(["HI", "LO"])].copy()
+        current_risk_weights = {"OK": 0, "CFN": 30, "LOLO": 90, "HIHI": 90}
+        tag_risk = risk_source["ALM_ALMSTATUS"].map(current_risk_weights).fillna(30).astype(float)
+        tag_risk += (risk_source["ALM_ALMPRIORITY"] == "CRITICAL").astype(int) * 10
         overall_risk = float(tag_risk.clip(upper=100).mean()) if len(tag_risk) else 0.0
         risk_class = "high" if overall_risk >= 60 else ("medium" if overall_risk >= 30 else "low")
 
+        def format_alarm_value(value):
+            """Render the source ALM_VALUE without treating a missing value as zero."""
+            if pd.isna(value) or str(value).strip() == "":
+                return "—"
+            numeric_value = pd.to_numeric(pd.Series([value]), errors="coerce").iat[0]
+            if pd.notna(numeric_value):
+                return f"{float(numeric_value):,.3f}".rstrip("0").rstrip(".")
+            return str(value).strip()
+
         status_weights = {"HIHI": 5, "LOLO": 5, "HI": 3, "LO": 3, "CFN": 2, "OK": 0}
         # 兩個 TOP 10 與熱區固定以本次成功同步時間往前 24 小時計算。
-        work = top10_alarms.copy()
+        work = top10_alarms.sort_values("TIME").copy()
         work["RISK_POINTS"] = work["ALM_ALMSTATUS"].map(status_weights).fillna(1)
         work.loc[work["ALM_ALMPRIORITY"] == "CRITICAL", "RISK_POINTS"] += 4
+        # VALUE represents the first alarm-entry value, never an OK recovery
+        # value such as "正常". GroupBy.first skips these missing candidates.
+        work["FIRST_ALARM_VALUE"] = work["ALM_VALUE"].where(work["ALM_ALMSTATUS"] != "OK")
         risk = (work.groupby(["ALM_TAGNAME", "ALM_DESCR"], as_index=False)
                     .agg(EVENTS=("TIME", "size"),
                          CRITICAL=("ALM_ALMPRIORITY", lambda s: int((s == "CRITICAL").sum())),
                          RISK=("RISK_POINTS", "sum"),
+                         VALUE=("FIRST_ALARM_VALUE", "first"),
                          LAST=("TIME", "max"))
                     .sort_values(["EVENTS", "RISK"], ascending=False)
                     .head(10))
@@ -341,13 +360,20 @@ def build_kf1_alarm_dashboard(script_dir: str, plant: str = "KF1") -> str:
                         .groupby("HOUR").size().reindex(range(24), fill_value=0))
 
         ranked_event_total = int(risk["EVENTS"].sum()) if not risk.empty else 0
-        risk_rows = []
+        risk_rows = ['''
+        <div class="alarm-risk-columns" aria-hidden="true">
+          <span>設備／警報</span><span>筆數</span><span>VALUE</span>
+        </div>'''] if not risk.empty else []
         for _, row in risk.iterrows():
             width = (float(row["EVENTS"]) / ranked_event_total * 100) if ranked_event_total else 0
             risk_rows.append(f"""
         <div class="alarm-risk-row">
-          <div class="alarm-risk-head"><span>{html.escape(row['ALM_DESCR'] or row['ALM_TAGNAME'])}</span></div>
-          <div class="alarm-risk-tag">{html.escape(row['ALM_TAGNAME'])} · {int(row['EVENTS'])} 筆 · Critical {int(row['CRITICAL'])}</div>
+          <div class="alarm-risk-main">
+            <div class="alarm-risk-head"><span>{html.escape(row['ALM_DESCR'] or row['ALM_TAGNAME'])}</span></div>
+            <div class="alarm-risk-tag">{html.escape(row['ALM_TAGNAME'])} · Critical {int(row['CRITICAL'])}</div>
+          </div>
+          <div class="alarm-risk-count">{int(row['EVENTS'])}</div>
+          <div class="alarm-risk-value">{html.escape(format_alarm_value(row.get('VALUE')))}</div>
           <div class="alarm-bar"><i style="width:{width:.1f}%"></i></div>
         </div>""")
         if not risk_rows:
@@ -398,15 +424,6 @@ def build_kf1_alarm_dashboard(script_dir: str, plant: str = "KF1") -> str:
                 return f"{hours}時 {minutes}分"
             return f"{minutes}分 {secs}秒"
 
-        def format_alarm_value(value):
-            """Render the source ALM_VALUE without treating a missing value as zero."""
-            if pd.isna(value) or str(value).strip() == "":
-                return "—"
-            numeric_value = pd.to_numeric(pd.Series([value]), errors="coerce").iat[0]
-            if pd.notna(numeric_value):
-                return f"{float(numeric_value):,.3f}".rstrip("0").rstrip(".")
-            return str(value).strip()
-
         recovery_rows = []
         for rank, (_, row) in enumerate(recovered.iterrows(), start=1):
             recovery_rows.append(f"""
@@ -437,9 +454,9 @@ def build_kf1_alarm_dashboard(script_dir: str, plant: str = "KF1") -> str:
     <div class="alarm-kpi risk {risk_class}"><span>整體風險</span><b>{overall_risk:.1f}%</b><small>數字越高，代表目前未復歸警報越嚴重</small></div>
   </div>
   <div class="alarm-grid alarm-grid-primary">
-    <section class="alarm-panel"><div class="alarm-panel-title"><span>每日警報趨勢</span><small>柱高＝全部事件；滑鼠移入或手機點擊可看明細</small></div>
+    <section class="alarm-panel"><div class="alarm-panel-title"><span>每日警報趨勢</span><small>柱高＝全部事件；滑鼠移入或手機點擊可顯示浮動摘要</small></div>
       <div class="alarm-daily">{''.join(daily_bars)}</div></section>
-    <section class="alarm-panel"><div class="alarm-panel-title"><span>24 小時風險熱區</span><small>滑鼠移入或手機點擊可看明細</small></div>
+    <section class="alarm-panel"><div class="alarm-panel-title"><span>24 小時風險熱區</span><small>滑鼠移入或手機點擊可顯示浮動摘要</small></div>
       <div class="alarm-hours">{''.join(hour_cells)}</div></section>
   </div>
   <div class="alarm-grid">
@@ -869,7 +886,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'alarm-start-value-20260813-1';
+var CACHE_EPOCH = 'alarm-first-nonok-20260813-2';
 
 (function resetOldFrontendCache() {
   try {
@@ -1176,7 +1193,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=alarm-start-value-20260813-1', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=alarm-first-nonok-20260813-2', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
@@ -3158,9 +3175,12 @@ footer{{
 .alarm-day-col[data-alarm-tip]:focus-visible,.alarm-hour[data-alarm-tip]:focus-visible{{box-shadow:0 0 0 2px var(--blue);border-radius:4px;}}
 .alarm-touch-tip{{position:fixed;z-index:10050;max-width:min(290px,calc(100vw - 24px));padding:9px 11px;background:#020617;color:#f8fafc;border:1px solid #64748b;border-radius:6px;box-shadow:0 10px 28px rgba(0,0,0,.58);font:700 .7rem/1.45 var(--mono);pointer-events:none;opacity:0;transform:translateY(5px);transition:opacity .12s,transform .12s;}}
 .alarm-touch-tip.show{{opacity:1;transform:translateY(0);}}
-.alarm-risk-row{{margin-bottom:10px;}}.alarm-risk-head{{display:flex;justify-content:space-between;gap:8px;font-size:.68rem;}}.alarm-risk-head span{{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}}.alarm-risk-head b{{font-family:var(--mono);color:#fb7185;white-space:nowrap;}}
+.alarm-risk-columns,.alarm-risk-row{{display:grid;grid-template-columns:minmax(0,1fr) 64px 92px;column-gap:12px;align-items:center;}}
+.alarm-risk-columns{{margin-bottom:7px;padding-bottom:5px;border-bottom:1px solid var(--bd);font-size:.55rem;color:var(--dim);}}.alarm-risk-columns span:nth-child(n+2){{text-align:center;}}
+.alarm-risk-row{{margin-bottom:10px;}}.alarm-risk-main{{min-width:0;}}.alarm-risk-head{{display:flex;justify-content:space-between;gap:8px;font-size:.68rem;}}.alarm-risk-head span{{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}}.alarm-risk-head b{{font-family:var(--mono);color:#fb7185;white-space:nowrap;}}
+.alarm-risk-count,.alarm-risk-value{{text-align:center;font:.64rem var(--mono);color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}}.alarm-risk-value{{color:#93c5fd;}}
 .alarm-panel-empty{{display:flex;align-items:center;justify-content:center;min-height:118px;color:var(--run);font:.72rem var(--mono);}}
-.alarm-risk-tag{{font:.56rem var(--mono);color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin:3px 0;}}.alarm-bar{{height:5px;background:#0f172a;border-radius:5px;overflow:hidden;}}.alarm-bar i{{height:100%;display:block;background:linear-gradient(90deg,#f59e0b,#f43f5e);}}
+.alarm-risk-tag{{font:.56rem var(--mono);color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin:3px 0;}}.alarm-bar{{grid-column:1/-1;height:5px;background:#0f172a;border-radius:5px;overflow:hidden;}}.alarm-bar i{{height:100%;display:block;background:linear-gradient(90deg,#f59e0b,#f43f5e);}}
 .alarm-table-wrap{{overflow-x:auto;overflow-y:visible;max-height:none;}}.alarm-table{{width:100%;border-collapse:collapse;font-size:.64rem;}}.alarm-table th{{position:static;background:var(--sf);text-align:left;color:var(--dim);padding:6px;border-bottom:1px solid var(--bd);white-space:nowrap;}}
 .alarm-table td{{padding:7px 6px;border-bottom:1px solid var(--bd);vertical-align:top;white-space:nowrap;}}.alarm-table td:nth-child(2){{white-space:normal;min-width:150px;}}.alarm-table td small{{display:block;margin-top:2px;font:500 .54rem var(--mono);color:var(--dim);word-break:break-all;}}
 .alarm-time span{{display:block;line-height:1.35;}}
@@ -3171,7 +3191,7 @@ footer{{
 .alarm-pending{{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;min-height:240px;margin-top:28px;padding:32px 20px;text-align:center;border:1px dashed var(--bd2);border-radius:8px;background:rgba(15,23,42,.28);}}
 .alarm-pending .wip-msg{{min-width:min(320px,100%);}}
 .alarm-empty{{min-height:45vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:var(--dim);border:1px dashed var(--bd2);border-radius:8px;padding:30px;}}.alarm-empty-title{{font-size:1rem;color:var(--tx);font-weight:700;margin-bottom:8px;}}
-@media(max-width:600px){{.alarm-hero{{flex-direction:column;}}.alarm-status-times{{width:100%;flex-direction:column;}}.alarm-freshness{{text-align:left;}}.alarm-panel-title{{align-items:flex-start;flex-direction:column;}}.alarm-panel-title small{{text-align:left;}}.alarm-data-health{{grid-template-columns:1fr 1fr;}}.alarm-data-health p{{grid-column:1/-1;}}.alarm-table-wrap{{overflow-x:hidden;}}.alarm-table{{table-layout:fixed;font-size:.58rem;}}.alarm-table th,.alarm-table td{{padding:6px 2px;white-space:normal;word-break:break-word;}}.alarm-table th:nth-child(1){{width:7%;}}.alarm-table th:nth-child(2){{width:29%;}}.alarm-table th:nth-child(3),.alarm-table th:nth-child(4){{width:16%;}}.alarm-table th:nth-child(5){{width:12%;}}.alarm-table th:nth-child(6){{width:20%;}}.alarm-table td:nth-child(2){{min-width:0;}}.alarm-table td small{{font-size:.48rem;overflow-wrap:anywhere;}}.alarm-rank{{width:19px;height:19px;font-size:.56rem;}}.alarm-time,.alarm-duration{{font-size:.55rem;}}}}
+@media(max-width:600px){{.alarm-hero{{flex-direction:column;}}.alarm-status-times{{width:100%;flex-direction:column;}}.alarm-freshness{{text-align:left;}}.alarm-panel-title{{align-items:flex-start;flex-direction:column;}}.alarm-panel-title small{{text-align:left;}}.alarm-data-health{{grid-template-columns:1fr 1fr;}}.alarm-data-health p{{grid-column:1/-1;}}.alarm-risk-columns,.alarm-risk-row{{grid-template-columns:minmax(0,1fr) 42px 62px;column-gap:6px;}}.alarm-risk-count,.alarm-risk-value{{font-size:.56rem;}}.alarm-table-wrap{{overflow-x:hidden;}}.alarm-table{{table-layout:fixed;font-size:.58rem;}}.alarm-table th,.alarm-table td{{padding:6px 2px;white-space:normal;word-break:break-word;}}.alarm-table th:nth-child(1){{width:7%;}}.alarm-table th:nth-child(2){{width:29%;}}.alarm-table th:nth-child(3),.alarm-table th:nth-child(4){{width:16%;}}.alarm-table th:nth-child(5){{width:12%;}}.alarm-table th:nth-child(6){{width:20%;}}.alarm-table td:nth-child(2){{min-width:0;}}.alarm-table td small{{font-size:.48rem;overflow-wrap:anywhere;}}.alarm-rank{{width:19px;height:19px;font-size:.56rem;}}.alarm-time,.alarm-duration{{font-size:.55rem;}}}}
 </style>
 </head>
 <body>
