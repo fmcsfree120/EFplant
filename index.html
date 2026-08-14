@@ -397,7 +397,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'alarm-first-nonok-20260813-2';
+var CACHE_EPOCH = 'frequency-filter-20260814-1';
 
 (function resetOldFrontendCache() {
   try {
@@ -704,7 +704,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=alarm-first-nonok-20260813-2', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=frequency-filter-20260814-1', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
