@@ -886,7 +886,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'pcb-static-pressure-filter-20260818-1';
+var CACHE_EPOCH = 'weekly-frontend-filter-sync-20260818-1';
 
 (function resetOldFrontendCache() {
   try {
@@ -1193,7 +1193,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=pcb-static-pressure-filter-20260818-1', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=weekly-frontend-filter-sync-20260818-1', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
@@ -1438,6 +1438,9 @@ _HJ2_STATIC_PRESSURE_TAGS = {
 }
 
 
+FRONTEND_TREND_PLANTS = frozenset({"T2A", "S2A", "PCB", "S2", "S3", "HJ1", "HJ2", "LC2", "LC3", "TH", "HF", "KF1"})
+
+
 def classify_quality_row(tagname, eqname, plant="", description=""):
     """趨勢圖資料分類唯一入口。回傳 (category, series_name)：
       category    : '大宗化學品' | '空壓效率' | '冰機效率' | '廠區用電' | '排氣靜壓' | None
@@ -1447,6 +1450,10 @@ def classify_quality_row(tagname, eqname, plant="", description=""):
     tag = str(tagname).upper()
     eq = str(eqname)
     plant_code = str(plant).strip().upper()
+    if plant_code == "KF":
+        plant_code = "KF1"
+    if plant_code and plant_code not in FRONTEND_TREND_PLANTS:
+        return (None, None)
 
     # HJ2 五支 FIX.* 歷史 Tag 明確併入既有酸排、鹼排、乾式集塵靜壓圖表，
     # 與其他廠區依設備型式分類的原則一致。
@@ -1520,6 +1527,15 @@ def classify_quality_row(tagname, eqname, plant="", description=""):
         return ("冰機效率", None)
 
     return (None, None)
+
+
+def is_frontend_trend_monitoring_point(tagname, eqname, plant="", description=""):
+    """Single visibility gate shared by the dashboard and weekly report."""
+    plant_code = "KF1" if str(plant).strip().upper() == "KF" else str(plant).strip().upper()
+    if plant_code not in FRONTEND_TREND_PLANTS:
+        return False
+    category, _ = classify_quality_row(tagname, eqname, plant=plant_code, description=description)
+    return category is not None
 
 
 def compile_quality_data(script_dir, force_base_time=None):
