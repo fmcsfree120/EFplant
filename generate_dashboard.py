@@ -886,7 +886,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'kf1-supply-water-only-20260818-1';
+var CACHE_EPOCH = 'pcb-static-pressure-filter-20260818-1';
 
 (function resetOldFrontendCache() {
   try {
@@ -1193,7 +1193,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=kf1-supply-water-only-20260818-1', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=pcb-static-pressure-filter-20260818-1', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>

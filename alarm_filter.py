@@ -18,6 +18,13 @@ PLANT_COLUMN = "PLANT"
 ACTION_ALARM_LIST_GLOBS = ("S2A*.csv", "T2A*.csv")
 ACTION_ALARM_SIMILARITY = 80.0
 ACTION_ALARM_PLANTS = frozenset({"S2", "S2A", "S3", "T2A", "HJ1", "HJ2", "PCB", "LC3"})
+PCB_STATIC_PRESSURE_EXCLUDE_TAGS = frozenset({
+    "4F_A004_DC_DPT_PV",
+    "1F_A005_DC_DPT_PV",
+    "1F_A003_DC_DPT_PV",
+    "1F_A002_DC_DPT_PV",
+    "1F_A001_DC_DPT_PV",
+})
 
 
 def _normalise_alarm_text(value: object, remove_system_prefix: bool = False) -> str:
@@ -90,6 +97,16 @@ def action_alarm_mask(frame: pd.DataFrame) -> pd.Series:
     return result
 
 
+def pcb_static_pressure_exclusion_mask(frame: pd.DataFrame) -> pd.Series:
+    """Exclude five PCB dust-collector pressure points pending suppression setup."""
+    if PLANT_COLUMN not in frame.columns or ALARM_TAG_COLUMN not in frame.columns:
+        return pd.Series(False, index=frame.index)
+    plants = frame[PLANT_COLUMN].fillna("").astype(str).str.strip().str.upper()
+    tags = frame[ALARM_TAG_COLUMN].fillna("").astype(str).map(_normalise_alarm_text)
+    normalized_targets = tuple(_normalise_alarm_text(tag) for tag in PCB_STATIC_PRESSURE_EXCLUDE_TAGS)
+    return plants.eq("PCB") & tags.map(lambda tag: any(target in tag for target in normalized_targets))
+
+
 def excluded_alarm_description(description: object) -> bool:
     """Return whether an alarm description matches an approved exclusion rule.
 
@@ -126,6 +143,7 @@ def filter_alarm_records(frame: pd.DataFrame) -> pd.DataFrame:
     mandatory_excluded = frame[ALARM_DESCRIPTION_COLUMN].fillna("").astype(str).str.contains(
         "頻率", regex=False
     )
+    mandatory_excluded |= pcb_static_pressure_exclusion_mask(frame)
     action_point = action_alarm_mask(frame)
     if PLANT_COLUMN not in frame.columns:
         return frame.loc[~excluded].copy()
