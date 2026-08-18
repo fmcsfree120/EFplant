@@ -886,7 +886,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'weekly-frontend-filter-sync-20260818-1';
+var CACHE_EPOCH = 'weekly-frontend-source-sync-20260818-1';
 
 (function resetOldFrontendCache() {
   try {
@@ -1193,7 +1193,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=weekly-frontend-filter-sync-20260818-1', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=weekly-frontend-source-sync-20260818-1', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
@@ -1439,6 +1439,15 @@ _HJ2_STATIC_PRESSURE_TAGS = {
 
 
 FRONTEND_TREND_PLANTS = frozenset({"T2A", "S2A", "PCB", "S2", "S3", "HJ1", "HJ2", "LC2", "LC3", "TH", "HF", "KF1"})
+FRONTEND_TREND_EXCLUDE_TAGS = frozenset({
+    "S2_AIR.S2A_W_A110_RPT01.F_CV",
+    "S2_AIR.S2A_W_A108_RPT01.F_CV",
+    "S2_AIR.S2A_W_A107_RPT01.F_CV",
+    "S2_AIR.S2A_W_A105_RPT01.F_CV",
+    "S2_AIR.S2A_W_A104_RPT01.F_CV",
+    "S2_AIR.S2A_W_A102_RPT01.F_CV",
+    "S2_AIR.S2A_W_A101_RPT01.F_CV",
+})
 
 
 def classify_quality_row(tagname, eqname, plant="", description=""):
@@ -1453,6 +1462,8 @@ def classify_quality_row(tagname, eqname, plant="", description=""):
     if plant_code == "KF":
         plant_code = "KF1"
     if plant_code and plant_code not in FRONTEND_TREND_PLANTS:
+        return (None, None)
+    if tag in FRONTEND_TREND_EXCLUDE_TAGS:
         return (None, None)
 
     # HJ2 五支 FIX.* 歷史 Tag 明確併入既有酸排、鹼排、乾式集塵靜壓圖表，
