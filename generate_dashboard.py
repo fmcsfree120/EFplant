@@ -139,6 +139,22 @@ def classify_equipment(eqno: str) -> str:
     return "其他設備"
 
 
+S2A_POWER_EQUIPMENT_EXCLUDE_TAGS = frozenset({
+    "S2A.S2A_PW_A5F_I9K_MGCB1_MW.F_CV",
+    "S2A.S2A_PW_B5F_I9K_MGCB1B_MW.F_CV",
+})
+
+
+def exclude_non_equipment_dashboard_rows(frame: pd.DataFrame) -> pd.DataFrame:
+    """Remove trend-only points before building RUN/STOP equipment cards."""
+    if frame.empty or "PLANT" not in frame.columns:
+        return frame.copy()
+    tags = frame.get("TAGNAME", pd.Series("", index=frame.index)).fillna("").astype(str).str.strip().str.upper()
+    plants = frame["PLANT"].fillna("").astype(str).str.strip().str.upper()
+    excluded = plants.eq("S2A") & tags.isin(S2A_POWER_EQUIPMENT_EXCLUDE_TAGS)
+    return frame.loc[~excluded].copy()
+
+
 def update_known_equipment(df_actual: pd.DataFrame, script_dir: str):
     """
     全自動新設備偵測：
@@ -886,7 +902,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'weekly-category-exclusions-20260818-1';
+var CACHE_EPOCH = 's2a-power-equipment-cards-20260818-1';
 
 (function resetOldFrontendCache() {
   try {
@@ -1193,7 +1209,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=weekly-category-exclusions-20260818-1', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=s2a-power-equipment-cards-20260818-1', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
@@ -1942,6 +1958,11 @@ def compile_quality_data(script_dir, force_base_time=None):
 def create_status_dashboard(df: pd.DataFrame, output_path: str = "index.html"):
     df = normalize_plant_column(df)
     print("開始處理 Dashboard 資料...")
+
+    # S2A plant-power measurements are trend points, not operational
+    # equipment. Keep them in the source CSV/energy chart but never create
+    # RUN/STOP equipment cards from them.
+    df = exclude_non_equipment_dashboard_rows(df)
 
     df['TIMESTAMP'] = pd.to_datetime(df['TIMESTAMP'])
     df['VALUE']     = pd.to_numeric(df['VALUE'], errors='coerce')
