@@ -386,7 +386,7 @@ def build_kf1_alarm_dashboard(script_dir: str, plant: str = "KF1") -> str:
         <div class="alarm-risk-row">
           <div class="alarm-risk-main">
             <div class="alarm-risk-head"><span>{html.escape(row['ALM_DESCR'] or row['ALM_TAGNAME'])}</span></div>
-            <div class="alarm-risk-tag">{html.escape(row['ALM_TAGNAME'])} · Critical {int(row['CRITICAL'])}</div>
+            <div class="alarm-risk-tag">{html.escape(row['ALM_TAGNAME'])}</div>
           </div>
           <div class="alarm-risk-count">{int(row['EVENTS'])}</div>
           <div class="alarm-risk-value">{html.escape(format_alarm_value(row.get('VALUE')))}</div>
@@ -902,7 +902,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 's2a-power-equipment-cards-20260818-1';
+var CACHE_EPOCH = 'top10-hide-critical-count-20260818-1';
 
 (function resetOldFrontendCache() {
   try {
@@ -1209,7 +1209,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=s2a-power-equipment-cards-20260818-1', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=top10-hide-critical-count-20260818-1', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
