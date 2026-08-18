@@ -886,7 +886,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'frequency-filter-20260814-1';
+var CACHE_EPOCH = 'kf1-supply-water-only-20260818-1';
 
 (function resetOldFrontendCache() {
   try {
@@ -1193,7 +1193,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=frequency-filter-20260814-1', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=kf1-supply-water-only-20260818-1', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
@@ -1262,7 +1262,7 @@ def water_loc_label(eqname):
     """供應水質量測點位置標籤：取自 EQNAME 去除『電阻/導電度』等類型字樣後的餘字
     (如 'A棟高層'/'401'/'高層'/'產水1')；全部統一以導電度(µS/cm)呈現於同一張圖。"""
     e = str(eqname)
-    for kw in ("供水電阻", "供水導電度", "產水導電度", "出水導電度", "電阻", "導電度"):
+    for kw in ("供水電阻", "供水水阻", "供水導電度", "產水導電度", "出水導電度", "電阻", "水阻", "導電度"):
         e = e.replace(kw, "")
     return e.strip()
 
@@ -1271,7 +1271,7 @@ def water_value_to_conductivity(eqname, value):
     """將供應水質讀值統一換算為導電度(µS/cm)。
     電阻(MΩ·cm) → 導電度(µS/cm)：κ = 1/ρ（ρ≤0 視為無效回傳 None）；
     本身即導電度者原值回傳。"""
-    if "電阻" in str(eqname):
+    if "電阻" in str(eqname) or "水阻" in str(eqname):
         return (1.0 / value) if value and value > 0 else None
     return value
 
@@ -1280,6 +1280,11 @@ def water_value_to_conductivity(eqname, value):
 # (1) 排除清單：不上架的量測點 TAGNAME（一律大寫比對）。
 _WATER_EXCLUDE_TAGS = {
     "UPW.UPW_RO1_CIT101B_PV.F_CV",  # PCB 高層供水導電度（僅保留低層，不上架高層）
+    # KF1 純水用量大時，回水量可能不足而無法代表實際回水水質；
+    # 回水點由 KF1 自行內控，前台只保留供水水質。
+    "DI.KF_DI_UPW_RIT4512_VALUE_PV.F_CV",  # KF1 低樓層迴水水阻
+    "DI.KF_DI_UPW_RIT4522_VALUE_PV.F_CV",  # KF1 中樓層迴水水阻
+    "DI.KF_DI_UPW_RIT4532_VALUE_PV.F_CV",  # KF1 高樓層迴水水阻
 }
 # (2) 線別標籤覆寫：(廠區, EQNAME) → 自訂圖例顯示名稱。
 #     註：HJ 6F-1/6F-2（產水導電度1/2）已取消；HJ1 改以出水導電度(SW_PUW)呈現為「HJ1」。
@@ -1481,7 +1486,7 @@ def classify_quality_row(tagname, eqname, plant="", description=""):
     # 排除 RO「產水」(中間製程)導電度，不納入供應水質（依需求取消 HJ 6F-1/6F-2 兩條曲線）
     if "產水" in eq and ("導電度" in eq or "電阻" in eq):
         return (None, None)
-    if "電阻" in eq or "導電度" in eq:
+    if "電阻" in eq or "水阻" in eq or "導電度" in eq:
         # 標準流程：排除清單內的量測點不上架（如 PCB 高層供水導電度）
         if tag in _WATER_EXCLUDE_TAGS:
             return (None, None)
