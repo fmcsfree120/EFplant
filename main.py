@@ -33,6 +33,7 @@ except Exception:
 _INDEX_ID_MAP = {}
 _INDEX_MAP_LOCK = threading.Lock()
 _SIGNLOG_LOCK = threading.Lock()
+_ACCOUNT_CSV_SIGNATURE = None
 LOGIN_AUDIT_ENABLED = False
 _RUNTIME_LOG_HANDLE = None
 
@@ -183,9 +184,9 @@ def rebuild_index_id_map():
         print("[WARN] 無法獲取 salt，暫時無法編譯 INDEX_ID 匹配快取。")
         return
         
-    accunt_path = os.path.join(SCRIPT_DIR, "accunt.txt")
-    if not os.path.exists(accunt_path):
-        print("[WARN] 找不到 accunt.txt，無法編譯對照表。")
+    account_path = os.path.join(SCRIPT_DIR, "account.csv")
+    if not os.path.exists(account_path):
+        print("[WARN] 找不到 account.csv，無法編譯對照表。")
         return
         
     new_map = {}
@@ -193,14 +194,13 @@ def rebuild_index_id_map():
     from Crypto.Hash import SHA256
     
     try:
-        with open(accunt_path, 'r', encoding='utf-8') as f:
-            for line in f:
-                line = line.strip()
-                if not line or ',' not in line:
+        with open(account_path, 'r', encoding='utf-8-sig', newline='') as f:
+            for row in csv.DictReader(f):
+                if str(row.get('active', 'Y')).strip().upper() not in {'Y', 'YES', 'TRUE', '1'}:
                     continue
-                parts = line.split(',', 1)
-                name = parts[0].strip()
-                pwd = parts[1].strip()
+                name = str(row.get('user_name', '')).strip()
+                stored_password = str(row.get('password', ''))
+                pwd = stored_password[5:] if stored_password.startswith('text:') else stored_password
                 if name and pwd:
                     # 計算與前端完全相同的 PBKDF2
                     dk = PBKDF2(pwd.encode('utf-8') if isinstance(pwd, str) else pwd, salt, dkLen=32, count=100000, hmac_hash_module=SHA256)
@@ -372,71 +372,36 @@ def load_config():
         return json.load(f)
 
 
-# ── 帳號同步 ─────────────────────────────────────────────────────────────────
-
-def load_accunt_txt():
-    """
-    讀取 accunt.txt（格式：姓名,密碼 每行一筆）
-    回傳密碼清單，讀取失敗回傳 None
-    """
-    path = os.path.join(SCRIPT_DIR, "accunt.txt")
-    if not os.path.exists(path):
-        print("[WARN] 找不到 accunt.txt，跳過帳號同步。")
-        return None
-    passwords = []
-    try:
-        with open(path, 'r', encoding='utf-8') as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                if ',' in line:
-                    pwd = line.split(',', 1)[1].strip()
-                    if pwd:
-                        passwords.append(pwd)
-    except Exception as e:
-        print(f"[WARN] accunt.txt 讀取錯誤: {e}")
-        return None
-    return passwords
-
-
+# ── 帳號來源監控 ─────────────────────────────────────────────────────────────
 def sync_accounts():
-    """
-    比對 accunt.txt 與 accounts.json 是否一致。
-    若有異動（新增/刪除人員或密碼變更），自動更新 accounts.json。
-    回傳 True 表示有異動（需重建密鑰庫），False 表示無異動。
-    """
-    accounts_path = os.path.join(SCRIPT_DIR, "accounts.json")
-
-    new_passwords = load_accunt_txt()
-    if new_passwords is None:
+    """Validate the sole account.csv source and detect on-disk changes."""
+    global _ACCOUNT_CSV_SIGNATURE
+    account_path = os.path.join(SCRIPT_DIR, "account.csv")
+    if not os.path.exists(account_path):
+        print("[ERROR] 找不到 account.csv；已停用 accunt.txt/accounts.json 回退。")
         return False
-
-    # 讀取現有 accounts.json
     try:
-        with open(accounts_path, 'r', encoding='utf-8') as f:
-            current = json.load(f)
-        current_passwords = current.get("passwords", [])
-    except (FileNotFoundError, json.JSONDecodeError):
-        current_passwords = []
-
-    # 比對（排序後比較，不因順序不同誤判）
-    if sorted(new_passwords) == sorted(current_passwords):
-        print(f"[OK] 帳號清單無異動（共 {len(new_passwords)} 組）。")
+        with open(account_path, 'r', encoding='utf-8-sig', newline='') as f:
+            rows = list(csv.DictReader(f))
+        active_rows = [
+            row for row in rows
+            if str(row.get('active', 'Y')).strip().upper() in {'Y', 'YES', 'TRUE', '1'}
+        ]
+        users = [str(row.get('user_name', '')).strip() for row in active_rows]
+        passwords = [str(row.get('password', '')) for row in active_rows]
+        if any(not user for user in users) or any(not password for password in passwords):
+            raise ValueError("啟用帳號存在空白 user_name 或 password")
+        if len(users) != len(set(users)) or len(passwords) != len(set(passwords)):
+            raise ValueError("啟用帳號存在重複 user_name 或 password")
+        stat = os.stat(account_path)
+        signature = (stat.st_mtime_ns, stat.st_size)
+        changed = _ACCOUNT_CSV_SIGNATURE is not None and signature != _ACCOUNT_CSV_SIGNATURE
+        _ACCOUNT_CSV_SIGNATURE = signature
+        print(f"[OK] account.csv 驗證完成（啟用 {len(active_rows)} 組，異動={changed}）。")
+        return changed
+    except Exception as e:
+        print(f"[ERROR] account.csv 驗證失敗；本輪不變更密鑰庫: {e}")
         return False
-
-    # 計算差異（只輸出數量，不輸出實際密碼）
-    new_set     = set(new_passwords)
-    old_set     = set(current_passwords)
-    added_cnt   = len(new_set - old_set)
-    removed_cnt = len(old_set - new_set)
-
-    # 寫入更新後的 accounts.json
-    with open(accounts_path, 'w', encoding='utf-8') as f:
-        json.dump({"passwords": new_passwords}, f, indent=4, ensure_ascii=False)
-
-    print(f"[SYNC] 帳號異動！ 新增 {added_cnt} 組 / 移除 {removed_cnt} 組 → 合計 {len(new_passwords)} 組")
-    return True
 
 
 # ── GitHub 推送 ───────────────────────────────────────────────────────────────
@@ -1006,7 +971,7 @@ def fetch_data_and_update():
         except Exception as stream_monitor_err:
             print(f"[WARN] 資料串流中斷通知檢查失敗，下一輪將重試：{stream_monitor_err}")
 
-        # Step 5：重建儀表板（使用最新 accounts.json 與警報 CSV）
+        # Step 5：重建儀表板（使用唯一 account.csv 帳號來源與警報 CSV）
         create_status_dashboard_fresh(df, "index.html")
 
         # Step 6：推送到 GitHub

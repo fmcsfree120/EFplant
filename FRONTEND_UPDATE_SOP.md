@@ -512,13 +512,16 @@ trend compilation, or frontend navigation generation.
 
 ## Account Page Classification Prototype
 
-- Local `account.csv` is the page-classification source and must remain ignored
+- Local `account.csv` is the sole login and page-classification source;
+  `accunt.txt` and `accounts.json` are retired and must not be used as fallback.
+  `account.csv` must remain ignored
   by Git because it contains plaintext-equivalent passwords. Password values use
   the `text:` prefix so spreadsheet software cannot discard leading zeroes; the
   generator removes only that first prefix before PBKDF2 derivation.
 - Supported roles are `viewer` and `submitter`. A viewer receives the existing
   dashboard navigation only. A submitter with `allowed_pages=inspection`
-  receives the `人工填報` navigation only.
+  receives one plant-scoped navigation label, formatted as
+  `<PLANT>風險巡檢人工填報`, and no dashboard navigation.
 - Each account profile is encrypted with that password-derived key inside
   `data.enc`. Do not publish usernames, roles, plant permissions, or passwords
   as plaintext static assets.

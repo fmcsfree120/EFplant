@@ -903,7 +903,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'inspection-role-prototype-20260820-1';
+var CACHE_EPOCH = 'inspection-plant-pages-20260820-1';
 
 (function resetOldFrontendCache() {
   try {
@@ -2738,7 +2738,7 @@ def create_status_dashboard(df: pd.DataFrame, output_path: str = "index.html"):
     <div class="inspection-heading">
       <div>
         <div class="inspection-kicker">MANUAL MONITORING INPUT</div>
-        <h2>人工監測數據填報</h2>
+        <h2 id="inspection-page-title">風險巡檢人工填報</h2>
         <p>此頁目前為帳號分類及手機操作測試，不會寫入正式 CSV。</p>
       </div>
       <span class="inspection-badge">PROTOTYPE</span>
@@ -3398,6 +3398,11 @@ function applyPageAccess(){{
     plantSelect.innerHTML = allowed.map(function(plant){{
       return '<option value="' + plant + '">' + plant + '</option>';
     }}).join('');
+    var pageLabel = allowed.length === 1 ? allowed[0] + '風險巡檢人工填報' : '風險巡檢人工填報';
+    var inspectionButton = document.querySelector('[data-plant="INSPECTION"]');
+    var inspectionTitle = document.getElementById('inspection-page-title');
+    if (inspectionButton) inspectionButton.textContent = pageLabel;
+    if (inspectionTitle) inspectionTitle.textContent = pageLabel;
   }}
   var timeInput = document.getElementById('inspection-time');
   if (timeInput && !timeInput.value) {{
@@ -4597,7 +4602,6 @@ function _syncTopBtn() {{
 
     account_dir = os.path.dirname(__file__) or "."
     account_csv_file = os.path.join(account_dir, "account.csv")
-    accounts_file = os.path.join(account_dir, "accounts.json")
     key_safes = {}
     account_profiles = []
     if os.path.exists(account_csv_file):
@@ -4628,22 +4632,9 @@ function _syncTopBtn() {{
                     })
             print(f"[OK] 已讀取 account.csv 共 {len(account_profiles)} 組啟用帳號。")
         except Exception as e:
-            print(f"[WARN] account.csv 處理錯誤，嘗試沿用 accounts.json: {e}")
-            account_profiles = []
-
-    if not account_profiles and os.path.exists(accounts_file):
-        with open(accounts_file, "r", encoding="utf-8") as af:
-            try:
-                acc = json.load(af)
-                for pwd in acc.get("passwords", []):
-                    account_profiles.append({
-                        "password": pwd,
-                        "profile": {"user_name": "", "role": "viewer", "allowed_pages": ["dashboard"], "allowed_plants": []},
-                    })
-            except Exception as e:
-                print(f"[WARN] accounts.json 處理錯誤: {e}")
+            raise RuntimeError(f"account.csv 處理錯誤，已停用舊帳號來源回退: {e}") from e
     if not account_profiles:
-        print("[WARN] 找不到可用帳號資料！")
+        raise RuntimeError("account.csv 沒有可用的啟用帳號，已停止產生前台")
 
     for account in account_profiles:
         pwd = account["password"]
