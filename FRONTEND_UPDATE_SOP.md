@@ -509,3 +509,24 @@ trend compilation, or frontend navigation generation.
   `<=1 A` is `STOP`.
 - This rule runs before generic integer `0/1` handling. Unconfirmed `VFD_FB`,
   `VFD_PV`, voltage, pressure, and differential-pressure signals are excluded.
+
+## Account Page Classification Prototype
+
+- Local `account.csv` is the page-classification source and must remain ignored
+  by Git because it contains plaintext-equivalent passwords. Password values use
+  the `text:` prefix so spreadsheet software cannot discard leading zeroes; the
+  generator removes only that first prefix before PBKDF2 derivation.
+- Supported roles are `viewer` and `submitter`. A viewer receives the existing
+  dashboard navigation only. A submitter with `allowed_pages=inspection`
+  receives the `人工填報` navigation only.
+- Each account profile is encrypted with that password-derived key inside
+  `data.enc`. Do not publish usernames, roles, plant permissions, or passwords
+  as plaintext static assets.
+- The inspection form is currently a page-classification and mobile-layout
+  prototype. Its submit action must not claim that CSV persistence succeeded
+  until a separately approved HTTPS write path and idempotent CSV merge process
+  exist.
+- This prototype controls normal page presentation; it does not yet create
+  cryptographically separate dashboard and inspection payloads. If page data
+  confidentiality becomes a requirement, stop and split the encrypted payloads
+  before treating role-based hiding as a security boundary.

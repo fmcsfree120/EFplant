@@ -8,6 +8,7 @@ import time
 import socket
 import re
 import html
+import csv
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
 from Crypto.Protocol.KDF import PBKDF2
@@ -902,7 +903,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'top10-hide-critical-count-20260818-1';
+var CACHE_EPOCH = 'inspection-role-prototype-20260820-1';
 
 (function resetOldFrontendCache() {
   try {
@@ -1022,10 +1023,21 @@ function decryptData(data, dkh) {
   var cp = CryptoJS.lib.CipherParams.create({ciphertext:CryptoJS.enc.Hex.parse(safe.enc_master)});
   var mk = CryptoJS.AES.decrypt(cp, ek, {iv:siv, mode:CryptoJS.mode.CBC, padding:CryptoJS.pad.Pkcs7});
   if (mk.sigBytes !== 32) return null;
+  var profile = {role:'viewer', allowed_pages:['dashboard'], allowed_plants:[]};
+  if (safe.profile_iv && safe.enc_profile) {
+    try {
+      var profileIv = CryptoJS.enc.Hex.parse(safe.profile_iv);
+      var profileCp = CryptoJS.lib.CipherParams.create({ciphertext:CryptoJS.enc.Hex.parse(safe.enc_profile)});
+      var profileText = CryptoJS.AES.decrypt(profileCp, ek, {iv:profileIv, mode:CryptoJS.mode.CBC, padding:CryptoJS.pad.Pkcs7})
+        .toString(CryptoJS.enc.Utf8);
+      if (profileText) profile = JSON.parse(profileText);
+    } catch(e) { return null; }
+  }
   var piv = CryptoJS.enc.Base64.parse(data.payload_iv);
   var pc = CryptoJS.lib.CipherParams.create({ciphertext:CryptoJS.enc.Base64.parse(data.payload)});
-  return CryptoJS.AES.decrypt(pc, mk, {iv:piv, mode:CryptoJS.mode.CBC, padding:CryptoJS.pad.Pkcs7})
+  var dashboardHtml = CryptoJS.AES.decrypt(pc, mk, {iv:piv, mode:CryptoJS.mode.CBC, padding:CryptoJS.pad.Pkcs7})
     .toString(CryptoJS.enc.Utf8) || null;
+  return dashboardHtml ? {html: dashboardHtml, profile: profile} : null;
 }
 
 function fetchData() {
@@ -1051,8 +1063,10 @@ function startPolling() {
 }
 
 function renderDashboard(data, dkh) {
-  var html = decryptData(data, dkh);
-  if (!html) return false;
+  var decrypted = decryptData(data, dkh);
+  if (!decrypted) return false;
+  var profileJson = JSON.stringify(decrypted.profile || {}).replace(/</g, '\\u003c');
+  var html = decrypted.html.replace('__EF_ACCESS_PROFILE__', profileJson);
   _efpDk = dkh;
   _efpLastUpdated = data.updated;
   saveSess(dkh);
@@ -2358,7 +2372,9 @@ def create_status_dashboard(df: pd.DataFrame, output_path: str = "index.html"):
         f'<nav class="plant-nav">\n        '
         f'{nav_btns}'
         f'{kf1_nav}'
-        f'<button class="nav-btn" data-plant="TREND" onclick="switchPlant(\'TREND\')">📈 趨勢圖</button>\n    </nav>'
+        f'<button class="nav-btn" data-plant="TREND" onclick="switchPlant(\'TREND\')">📈 趨勢圖</button>\n        '
+        f'<button class="nav-btn inspection-nav-btn" data-plant="INSPECTION" '
+        f'onclick="switchPlant(\'INSPECTION\')" style="display:none">📝 人工填報</button>\n    </nav>'
     )
 
     kpi_zone_html = '<div class="kpi-zone">\n'
@@ -2714,6 +2730,54 @@ def create_status_dashboard(df: pd.DataFrame, output_path: str = "index.html"):
 </div>
 """
 
+    # 權限分類原型：此頁只供 submitter 帳號顯示。送出動作目前僅作 UI
+    # 驗證，不會寫入 inspection/inspection_submissions.csv。
+    plant_html += """
+<div id="pc-INSPECTION" class="plant-container inspection-container" style="display:none">
+  <section class="inspection-panel">
+    <div class="inspection-heading">
+      <div>
+        <div class="inspection-kicker">MANUAL MONITORING INPUT</div>
+        <h2>人工監測數據填報</h2>
+        <p>此頁目前為帳號分類及手機操作測試，不會寫入正式 CSV。</p>
+      </div>
+      <span class="inspection-badge">PROTOTYPE</span>
+    </div>
+    <form id="inspection-form" onsubmit="return submitInspectionPrototype(event)">
+      <div class="inspection-grid">
+        <label>廠區
+          <select id="inspection-plant" required></select>
+        </label>
+        <label>數據時間
+          <input id="inspection-time" type="datetime-local" required>
+        </label>
+        <label>監測點
+          <select id="inspection-point" required>
+            <option value="MANUAL_DEMO_01">人工監測點 A（測試）</option>
+            <option value="MANUAL_DEMO_02">人工監測點 B（測試）</option>
+            <option value="MANUAL_DEMO_03">人工監測點 C（測試）</option>
+          </select>
+        </label>
+        <label>填報數值
+          <input id="inspection-value" type="number" step="any" inputmode="decimal" placeholder="請輸入數值" required>
+        </label>
+        <label>單位
+          <input id="inspection-unit" type="text" value="--" maxlength="20" required>
+        </label>
+        <label class="inspection-note">備註
+          <textarea id="inspection-note" rows="3" maxlength="200" placeholder="選填"></textarea>
+        </label>
+      </div>
+      <div class="inspection-actions">
+        <button type="reset" class="inspection-secondary">清除</button>
+        <button type="submit" class="inspection-primary">測試送出</button>
+      </div>
+      <div id="inspection-result" class="inspection-result" role="status"></div>
+    </form>
+  </section>
+</div>
+"""
+
 
     full_html = f"""<!DOCTYPE html>
 <html lang="zh-TW">
@@ -2853,6 +2917,31 @@ header{{
 }}
 .nav-btn.active{{background:var(--blue);border-color:var(--blue);color:#fff;}}
 .nav-btn:hover:not(.active){{border-color:var(--tx);color:var(--tx);}}
+.inspection-container{{padding:18px;}}
+.inspection-panel{{max-width:920px;margin:0 auto;background:var(--sf);border:1px solid var(--bd2);border-radius:12px;padding:22px;box-shadow:0 16px 40px rgba(0,0,0,.22);}}
+.inspection-heading{{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:22px;}}
+.inspection-heading h2{{font-size:1.35rem;margin:4px 0 6px;}}
+.inspection-heading p{{color:var(--dim);font-size:.82rem;line-height:1.55;}}
+.inspection-kicker{{font-family:var(--mono);font-size:.68rem;letter-spacing:1.3px;color:var(--blue);}}
+.inspection-badge{{font-family:var(--mono);font-size:.65rem;color:var(--amb);border:1px solid var(--amb);border-radius:999px;padding:5px 9px;white-space:nowrap;}}
+.inspection-grid{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;}}
+.inspection-grid label{{display:flex;flex-direction:column;gap:7px;color:var(--dim);font-size:.76rem;font-weight:700;}}
+.inspection-grid input,.inspection-grid select,.inspection-grid textarea{{width:100%;background:var(--bg);border:1px solid var(--bd2);border-radius:7px;color:var(--tx);padding:11px 12px;font:inherit;outline:none;}}
+.inspection-grid input:focus,.inspection-grid select:focus,.inspection-grid textarea:focus{{border-color:var(--blue);box-shadow:0 0 0 2px rgba(96,165,250,.18);}}
+.inspection-note{{grid-column:1/-1;}}
+.inspection-actions{{display:flex;justify-content:flex-end;gap:10px;margin-top:18px;}}
+.inspection-actions button{{border-radius:7px;padding:10px 18px;font-weight:800;cursor:pointer;}}
+.inspection-secondary{{background:transparent;color:var(--dim);border:1px solid var(--bd2);}}
+.inspection-primary{{background:var(--blue);color:#07111f;border:1px solid var(--blue);}}
+.inspection-result{{display:none;margin-top:14px;border:1px solid var(--amb);background:rgba(245,158,11,.08);color:#fcd34d;border-radius:7px;padding:10px 12px;font-size:.78rem;}}
+@media(max-width:640px){{
+  .inspection-container{{padding:10px;}}
+  .inspection-panel{{padding:16px;}}
+  .inspection-heading{{flex-direction:column;}}
+  .inspection-grid{{grid-template-columns:1fr;}}
+  .inspection-note{{grid-column:auto;}}
+  .inspection-actions{{display:grid;grid-template-columns:1fr 1fr;}}
+}}
 .chart-link{{
   padding:5px 10px;
   border:1px solid var(--bd2);border-radius:3px;
@@ -3287,6 +3376,48 @@ footer{{
   </footer>
 </div>
 <script>
+const ACCESS_PROFILE = __EF_ACCESS_PROFILE__;
+const INSPECTION_PLANTS = ["T2A","S2A","PCB","S2","S3","HJ1","HJ2","LC2","LC3","TH","HF","KF1"];
+
+function hasAccessPage(page){{
+  var pages = Array.isArray(ACCESS_PROFILE.allowed_pages) ? ACCESS_PROFILE.allowed_pages : [];
+  return pages.indexOf(page) >= 0;
+}}
+
+function applyPageAccess(){{
+  var canInspect = ACCESS_PROFILE.role === 'submitter' && hasAccessPage('inspection');
+  var canDashboard = hasAccessPage('dashboard') && ACCESS_PROFILE.role !== 'submitter';
+  document.querySelectorAll('.nav-btn').forEach(function(btn){{
+    var isInspection = btn.getAttribute('data-plant') === 'INSPECTION';
+    btn.style.display = isInspection ? (canInspect ? '' : 'none') : (canDashboard ? '' : 'none');
+  }});
+  var plantSelect = document.getElementById('inspection-plant');
+  if (plantSelect && canInspect) {{
+    var allowed = Array.isArray(ACCESS_PROFILE.allowed_plants) ? ACCESS_PROFILE.allowed_plants : [];
+    if (!allowed.length || allowed.indexOf('ALL') >= 0) allowed = INSPECTION_PLANTS;
+    plantSelect.innerHTML = allowed.map(function(plant){{
+      return '<option value="' + plant + '">' + plant + '</option>';
+    }}).join('');
+  }}
+  var timeInput = document.getElementById('inspection-time');
+  if (timeInput && !timeInput.value) {{
+    var now = new Date(Date.now() - new Date().getTimezoneOffset() * 60000);
+    timeInput.value = now.toISOString().slice(0,16);
+  }}
+  return canInspect ? 'INSPECTION' : null;
+}}
+
+function submitInspectionPrototype(event){{
+  event.preventDefault();
+  if (!(ACCESS_PROFILE.role === 'submitter' && hasAccessPage('inspection'))) return false;
+  var result = document.getElementById('inspection-result');
+  if (result) {{
+    result.style.display = 'block';
+    result.textContent = '權限與表單驗證成功；目前為原型頁面，資料尚未寫入 CSV。';
+  }}
+  return false;
+}}
+
 // ── Status pulse & auto-update detection ────────────────────────────
 const GEN_TIME = new Date("{generation_time_iso}");
 const INTERVAL_MIN = 60, GRACE_MIN = 15;
@@ -3439,6 +3570,9 @@ document.addEventListener('visibilitychange',function(){{
 // ────────────────────────────────────────────────────────────────────
 
 function switchPlant(id){{
+  var inspectionTarget = id === 'INSPECTION';
+  if (inspectionTarget && !(ACCESS_PROFILE.role === 'submitter' && hasAccessPage('inspection'))) return;
+  if (!inspectionTarget && !(hasAccessPage('dashboard') && ACCESS_PROFILE.role !== 'submitter')) return;
   document.querySelectorAll('.plant-container').forEach(c=>{{c.style.display='none';c.classList.remove('active');}});
   document.querySelectorAll('.kpi-set').forEach(k=>{{k.style.display='none';}});
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
@@ -4378,8 +4512,10 @@ function initAlarmTooltips() {{
 
 window.addEventListener('DOMContentLoaded',function(){{
   initAlarmTooltips();
+  var forcedPage=applyPageAccess();
+  if(forcedPage){{switchPlant(forcedPage);return;}}
   var s=localStorage.getItem('ap');
-  var f=document.querySelector('.nav-btn');
+  var f=Array.from(document.querySelectorAll('.nav-btn')).find(function(btn){{return btn.style.display !== 'none';}});
   if(!f)return;
   var fid=f.getAttribute('data-plant');
   if(s&&document.getElementById('pc-'+s))switchPlant(s);
@@ -4459,25 +4595,77 @@ function _syncTopBtn() {{
     except Exception as e:
         print(f"[WARN] salt.bin 寫入失敗: {e}")
 
-    accounts_file = os.path.join(os.path.dirname(__file__) or ".", "accounts.json")
+    account_dir = os.path.dirname(__file__) or "."
+    account_csv_file = os.path.join(account_dir, "account.csv")
+    accounts_file = os.path.join(account_dir, "accounts.json")
     key_safes = {}
-    if os.path.exists(accounts_file):
+    account_profiles = []
+    if os.path.exists(account_csv_file):
+        try:
+            with open(account_csv_file, "r", encoding="utf-8-sig", newline="") as af:
+                for row in csv.DictReader(af):
+                    if str(row.get("active", "Y")).strip().upper() not in {"Y", "YES", "TRUE", "1"}:
+                        continue
+                    stored_password = str(row.get("password", ""))
+                    password = stored_password[5:] if stored_password.startswith("text:") else stored_password
+                    if not password:
+                        continue
+                    role = str(row.get("role", "viewer")).strip().lower()
+                    if role not in {"viewer", "submitter"}:
+                        role = "viewer"
+                    pages = [p.strip().lower() for p in re.split(r"[;,]", str(row.get("allowed_pages", ""))) if p.strip()]
+                    if not pages:
+                        pages = ["inspection"] if role == "submitter" else ["dashboard"]
+                    plants = [p.strip().upper() for p in re.split(r"[;,]", str(row.get("allowed_plants", ""))) if p.strip()]
+                    account_profiles.append({
+                        "password": password,
+                        "profile": {
+                            "user_name": str(row.get("user_name", "")).strip(),
+                            "role": role,
+                            "allowed_pages": pages,
+                            "allowed_plants": plants,
+                        },
+                    })
+            print(f"[OK] 已讀取 account.csv 共 {len(account_profiles)} 組啟用帳號。")
+        except Exception as e:
+            print(f"[WARN] account.csv 處理錯誤，嘗試沿用 accounts.json: {e}")
+            account_profiles = []
+
+    if not account_profiles and os.path.exists(accounts_file):
         with open(accounts_file, "r", encoding="utf-8") as af:
             try:
                 acc = json.load(af)
                 for pwd in acc.get("passwords", []):
-                    dk  = PBKDF2(pwd, global_salt, dkLen=32, count=100000, hmac_hash_module=SHA256)
-                    iid = dk[:16].hex()
-                    enc = dk[16:]
-                    biv = get_random_bytes(16)
-                    bc  = AES.new(enc, AES.MODE_CBC, biv)
-                    em  = bc.encrypt(pad(master_key, AES.block_size))
-                    key_safes[iid] = {"iv": biv.hex(), "enc_master": em.hex()}
-                print(f"[OK] 已打包 {len(key_safes)} 組密碼箱。")
+                    account_profiles.append({
+                        "password": pwd,
+                        "profile": {"user_name": "", "role": "viewer", "allowed_pages": ["dashboard"], "allowed_plants": []},
+                    })
             except Exception as e:
                 print(f"[WARN] accounts.json 處理錯誤: {e}")
-    else:
-        print("[WARN] 找不到 accounts.json！")
+    if not account_profiles:
+        print("[WARN] 找不到可用帳號資料！")
+
+    for account in account_profiles:
+        pwd = account["password"]
+        dk  = PBKDF2(pwd, global_salt, dkLen=32, count=100000, hmac_hash_module=SHA256)
+        iid = dk[:16].hex()
+        enc = dk[16:]
+        if iid in key_safes:
+            raise ValueError("偵測到重複密碼衍生索引，已停止產生前台")
+        biv = get_random_bytes(16)
+        bc  = AES.new(enc, AES.MODE_CBC, biv)
+        em  = bc.encrypt(pad(master_key, AES.block_size))
+        profile_iv = get_random_bytes(16)
+        profile_cipher = AES.new(enc, AES.MODE_CBC, profile_iv)
+        profile_json = json.dumps(account["profile"], ensure_ascii=False, separators=(",", ":"))
+        enc_profile = profile_cipher.encrypt(pad(profile_json.encode("utf-8"), AES.block_size))
+        key_safes[iid] = {
+            "iv": biv.hex(),
+            "enc_master": em.hex(),
+            "profile_iv": profile_iv.hex(),
+            "enc_profile": enc_profile.hex(),
+        }
+    print(f"[OK] 已打包 {len(key_safes)} 組含頁面權限的密碼箱。")
 
     output_dir = os.path.dirname(os.path.abspath(output_path)) or "."
 
