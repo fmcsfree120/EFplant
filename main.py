@@ -17,6 +17,8 @@ import warnings
 import traceback
 from urllib.parse import urlparse, parse_qs
 
+from data_stream_monitor import evaluate_streams, monitor_data_streams
+
 # ── 強制 stdout/stderr 以 UTF-8 輸出 ────────────────────────────────
 # Windows 主控台預設為 cp950(Big5)，print 中文或 emoji 時可能拋出
 # UnicodeEncodeError 導致常駐排程程序中斷。統一改為 UTF-8 並容錯。
@@ -296,8 +298,8 @@ warnings.filterwarnings('ignore', '.*pandas only supports SQLAlchemy.*')
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
-def create_status_dashboard_fresh(df, output_path):
-    """每次重建都重新載入磁碟上的產生器，避免常駐程序沿用舊版程式碼。"""
+def load_dashboard_module_fresh():
+    """重新載入磁碟上的產生器，供分類與前台重建共用同一版規則。"""
     generator_path = os.path.join(SCRIPT_DIR, "generate_dashboard.py")
     module_name = f"efplant_dashboard_{time.time_ns()}"
     spec = importlib.util.spec_from_file_location(module_name, generator_path)
@@ -305,6 +307,12 @@ def create_status_dashboard_fresh(df, output_path):
         raise RuntimeError(f"無法載入前台產生器：{generator_path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    return module
+
+
+def create_status_dashboard_fresh(df, output_path):
+    """每次重建都重新載入磁碟上的產生器，避免常駐程序沿用舊版程式碼。"""
+    module = load_dashboard_module_fresh()
     module.create_status_dashboard(df, output_path)
 
 
@@ -831,6 +839,8 @@ def fetch_data_and_update():
     # 以發動抓取 SQL 的當下整點為統一時間基準
     trigger_hour = datetime.now().replace(minute=0, second=0, microsecond=0)
     trigger_ts   = pd.Timestamp(trigger_hour)
+    # 品質查詢失敗時仍需以空資料執行中斷監控，避免引用尚未賦值的區域變數。
+    df_quality_source = pd.DataFrame()
     print(f"\n{'='*52}")
     print(f"  [{now_str}] 排程作業啟動 (觸發整點: {trigger_hour.strftime('%Y-%m-%d %H:00')})")
     print(f"{'='*52}")
@@ -861,6 +871,7 @@ def fetch_data_and_update():
         ORDER BY TIMESTAMP DESC
         """
         df = pd.read_sql(query, conn)
+        df_equipment_source = df.copy()
         
         # 2) 抓取品質/能效歷史趨勢 (14天，336小時)
         print("同步抓取 dbo.EQQT_DB (能效/品質歷史趨勢)...")
@@ -876,6 +887,7 @@ def fetch_data_and_update():
                     df_quality['PLANT'].astype(str).str.strip().str.upper()
                     .replace({'KF': 'KF1'})
                 )
+            df_quality_source = df_quality.copy()
 
             # KF1 兩只廠區總功率表的歷史資料原為 kW，來源於 2026-07-28
             # 09:00 起改為 MW。每次會重抓完整七日資料，因此必須在寫入 CSV
@@ -940,6 +952,7 @@ def fetch_data_and_update():
 
         if df.empty:
             print("[WARN] 資料庫無資料。")
+            evaluate_streams({}, now=trigger_ts)
             if accounts_changed:
                 regen_from_backup("no new data")
             return
@@ -979,6 +992,20 @@ def fetch_data_and_update():
             combined_data = combined_data[combined_data['TIMESTAMP'] >= max_data_time - pd.Timedelta(days=CSV_RETENTION_DAYS)]
         combined_data.to_csv(data_backup_path, index=False, encoding='utf-8-sig')
 
+        # Step 4.5：設備運轉／品質趨勢超過 6 小時未更新時，透過 py 專案
+        # 發送 Synology Chat 通知；警報 CSV 不屬於本監控範圍。
+        try:
+            dashboard_module = load_dashboard_module_fresh()
+            monitor_data_streams(
+                pd.concat([existing_data, df_equipment_source], ignore_index=True, sort=False),
+                df_quality_source,
+                dashboard_module.classify_equipment,
+                dashboard_module.classify_quality_row,
+                now=trigger_ts,
+            )
+        except Exception as stream_monitor_err:
+            print(f"[WARN] 資料串流中斷通知檢查失敗，下一輪將重試：{stream_monitor_err}")
+
         # Step 5：重建儀表板（使用最新 accounts.json 與警報 CSV）
         create_status_dashboard_fresh(df, "index.html")
 
@@ -1001,6 +1028,10 @@ def fetch_data_and_update():
 
     except Exception as e:
         print(f"[ERROR] MSSQL 錯誤: {e}")
+        try:
+            evaluate_streams({}, now=trigger_ts)
+        except Exception as monitor_err:
+            print(f"[WARN] 資料串流中斷通知檢查失敗，下一輪將重試：{monitor_err}")
         if accounts_changed:
             print("[INFO] 帳號有異動，嘗試用備份資料更新密鑰庫...")
             regen_from_backup("MSSQL error")

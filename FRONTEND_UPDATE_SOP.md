@@ -471,6 +471,12 @@ trend compilation, or frontend navigation generation.
 - The TOP 10 alarm-recovery panel is shared by every connected plant: display
   only individual recoveries lasting at least 30 minutes, rank by duration,
   and show up to 10 records without padding short-duration entries.
+- In the TOP 10 alarm-recovery panel, the `VALUE` column displays `ALM_VALUE`
+  from the non-OK alarm-entry record. The following OK record closes the
+  recovery duration but its value must never replace the alarm-entry value.
+- The mobile recovery table has six visible columns. Its mobile CSS must assign
+  widths to columns 1 through 6 totaling 100%; the sixth `最長單次耗時` column
+  must remain visible without horizontal clipping.
 - In the TOP 10 high-risk-equipment panel, each bar width is its alarm-event
   count divided by the total event count of the currently ranked records; rows
   are sorted by event count descending, then risk score descending.
@@ -479,6 +485,13 @@ trend compilation, or frontend navigation generation.
 - HF remains a required equipment navigation tab. Until equipment status is
   available, its equipment section uses the standard construction placeholder
   while its connected alarm-risk section remains visible below it.
+- HF quality-history rows are included in the shared trend plant list even
+  while HF equipment status and run-rate sources remain unavailable. HF must
+  not receive mock equipment or run-rate data.
+- HF chemical `EQNAME` suffixes `_1` and `_2` identify separate tanks of the
+  same chemical and appear as `HF 槽1` / `HF 槽2` series in the existing
+  cross-plant chemical charts. `CUSO4`, `FECL3`, and `MM6800` are supported
+  chemical names. HF `WT...PH` data joins the shared `出口pH` chart.
 
 ### KF1 Chiller Running State
 
