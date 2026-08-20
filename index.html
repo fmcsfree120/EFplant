@@ -397,7 +397,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'top10-hide-critical-count-20260818-1';
+var CACHE_EPOCH = 'inspection-role-prototype-20260820-1';
 
 (function resetOldFrontendCache() {
   try {
@@ -517,10 +517,21 @@ function decryptData(data, dkh) {
   var cp = CryptoJS.lib.CipherParams.create({ciphertext:CryptoJS.enc.Hex.parse(safe.enc_master)});
   var mk = CryptoJS.AES.decrypt(cp, ek, {iv:siv, mode:CryptoJS.mode.CBC, padding:CryptoJS.pad.Pkcs7});
   if (mk.sigBytes !== 32) return null;
+  var profile = {role:'viewer', allowed_pages:['dashboard'], allowed_plants:[]};
+  if (safe.profile_iv && safe.enc_profile) {
+    try {
+      var profileIv = CryptoJS.enc.Hex.parse(safe.profile_iv);
+      var profileCp = CryptoJS.lib.CipherParams.create({ciphertext:CryptoJS.enc.Hex.parse(safe.enc_profile)});
+      var profileText = CryptoJS.AES.decrypt(profileCp, ek, {iv:profileIv, mode:CryptoJS.mode.CBC, padding:CryptoJS.pad.Pkcs7})
+        .toString(CryptoJS.enc.Utf8);
+      if (profileText) profile = JSON.parse(profileText);
+    } catch(e) { return null; }
+  }
   var piv = CryptoJS.enc.Base64.parse(data.payload_iv);
   var pc = CryptoJS.lib.CipherParams.create({ciphertext:CryptoJS.enc.Base64.parse(data.payload)});
-  return CryptoJS.AES.decrypt(pc, mk, {iv:piv, mode:CryptoJS.mode.CBC, padding:CryptoJS.pad.Pkcs7})
+  var dashboardHtml = CryptoJS.AES.decrypt(pc, mk, {iv:piv, mode:CryptoJS.mode.CBC, padding:CryptoJS.pad.Pkcs7})
     .toString(CryptoJS.enc.Utf8) || null;
+  return dashboardHtml ? {html: dashboardHtml, profile: profile} : null;
 }
 
 function fetchData() {
@@ -546,8 +557,10 @@ function startPolling() {
 }
 
 function renderDashboard(data, dkh) {
-  var html = decryptData(data, dkh);
-  if (!html) return false;
+  var decrypted = decryptData(data, dkh);
+  if (!decrypted) return false;
+  var profileJson = JSON.stringify(decrypted.profile || {}).replace(/</g, '\u003c');
+  var html = decrypted.html.replace('__EF_ACCESS_PROFILE__', profileJson);
   _efpDk = dkh;
   _efpLastUpdated = data.updated;
   saveSess(dkh);
