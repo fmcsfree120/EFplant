@@ -903,7 +903,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'ym-trend-classification-20260821-1';
+var CACHE_EPOCH = 'ym-hscr-static-pressure-20260821-1';
 
 (function resetOldFrontendCache() {
   try {
@@ -1223,7 +1223,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=ym-trend-classification-20260821-1', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=ym-hscr-static-pressure-20260821-1', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
@@ -1378,6 +1378,12 @@ def static_chart_key(plant, tagname, eqname, description):
         if any(word in desc for word in ("濕式", "溼式", "濕集塵", "溼集塵")):
             return "濕式集塵靜壓"
         return "乾式集塵靜壓"
+
+    # YM HSCR is an authoritative hot-exhaust equipment identifier. Two YM
+    # source descriptions currently contain the incorrect word "鹼排", so the
+    # equipment code must win before the generic description-based rules.
+    if plant == "YM" and eq_upper.startswith("HSCR"):
+        return "熱排氣靜壓"
 
     # 文字描述優先於設備代號；T2A VSCR#1~#3 的描述為熱排，顯示名稱另改為 HSCR。
     if "酸排" in desc:

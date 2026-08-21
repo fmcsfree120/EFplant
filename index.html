@@ -397,7 +397,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'ym-trend-classification-20260821-1';
+var CACHE_EPOCH = 'ym-hscr-static-pressure-20260821-1';
 
 (function resetOldFrontendCache() {
   try {
@@ -717,7 +717,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=ym-trend-classification-20260821-1', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=ym-hscr-static-pressure-20260821-1', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
