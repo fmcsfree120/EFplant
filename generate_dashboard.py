@@ -903,7 +903,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'inspection-plant-pages-20260820-1';
+var CACHE_EPOCH = 'ym-trend-classification-20260821-1';
 
 (function resetOldFrontendCache() {
   try {
@@ -1223,7 +1223,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=top10-hide-critical-count-20260818-1', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=ym-trend-classification-20260821-1', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
@@ -1468,7 +1468,7 @@ _HJ2_STATIC_PRESSURE_TAGS = {
 }
 
 
-FRONTEND_TREND_PLANTS = frozenset({"T2A", "S2A", "PCB", "S2", "S3", "HJ1", "HJ2", "LC2", "LC3", "TH", "HF", "KF1"})
+FRONTEND_TREND_PLANTS = frozenset({"T2A", "S2A", "PCB", "S2", "S3", "HJ1", "HJ2", "LC2", "LC3", "TH", "HF", "KF1", "YM"})
 FRONTEND_TREND_EXCLUDE_TAGS = frozenset({
     "S2_AIR.S2A_W_A110_RPT01.F_CV",
     "S2_AIR.S2A_W_A108_RPT01.F_CV",
@@ -1504,6 +1504,16 @@ def classify_quality_row(tagname, eqname, plant="", description=""):
     # HJ2 放流前 pH 的設備名稱在部分來源會有字碼差異，Tag 是穩定識別值。
     if plant_code == "HJ2" and tag == "HJ2.WAT_PH.F_CV":
         return ("廢水處理", "出口pH")
+
+    # YM quality history uses a plant-specific naming convention. Keep the
+    # resulting charts shared with the other plants: chemical name is between
+    # CHEM_A6F_ and _LT, while ORG_ARF* points are organic-exhaust static pressure.
+    if plant_code == "YM":
+        ym_chem = re.search(r"CHEM_A6F_(.+?)_LT(?:_|\.)", tag)
+        if ym_chem:
+            return ("大宗化學品", _norm_chem(ym_chem.group(1)))
+        if re.search(r"\.YM1_ORG_ARF\d*_DPT(?:_|\.)", tag):
+            return ("排氣靜壓", "有機排氣靜壓")
 
     # HF 的 EQNAME 以尾碼 _1／_2 表示同化學品的不同槽。圖表仍依化學品
     # 跨廠合併，槽號只作為 HF 廠內的線別後綴，避免兩槽資料互相覆蓋。
@@ -1584,7 +1594,7 @@ def compile_quality_data(script_dir, force_base_time=None):
     import math
     
     # Trend plants
-    PLANTS = ["T2A", "S2A", "PCB", "S2", "S3", "HJ1", "HJ2", "LC2", "LC3", "TH", "HF", "KF1"]
+    PLANTS = ["T2A", "S2A", "PCB", "S2", "S3", "HJ1", "HJ2", "LC2", "LC3", "TH", "HF", "KF1", "YM"]
     
     # Load actual backup if it exists first
     df_q = pd.DataFrame()
@@ -3613,7 +3623,7 @@ function switchPlant(id){{
 }}
 
 // ── ECharts Trend Logic (SPA Integration) ─────────────────────────
-const PLANTS = ["T2A", "S2A", "PCB", "S2", "S3", "HJ1", "HJ2", "LC2", "LC3", "TH", "HF", "KF1"];
+const PLANTS = ["T2A", "S2A", "PCB", "S2", "S3", "HJ1", "HJ2", "LC2", "LC3", "TH", "HF", "KF1", "YM"];
 const PLANT_COLORS = {{
   "T2A": "#38bdf8",
   "S2A": "#10b981",
@@ -3627,6 +3637,7 @@ const PLANT_COLORS = {{
   "TH":  "#f97316",
   "HF":  "#84cc16",
   "KF1": "#facc15",
+  "YM":  "#8b5cf6",
   "HJ":  "#06b6d4"
 }};
 const METRIC_METADATA = {{
