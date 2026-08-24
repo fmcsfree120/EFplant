@@ -903,7 +903,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'ym-hscr-static-pressure-20260821-1';
+var CACHE_EPOCH = 'ym-hdust-static-pressure-20260824-1';
 
 (function resetOldFrontendCache() {
   try {
@@ -1223,7 +1223,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=ym-hscr-static-pressure-20260821-1', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=ym-hdust-static-pressure-20260824-1', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
@@ -1520,6 +1520,13 @@ def classify_quality_row(tagname, eqname, plant="", description=""):
             return ("大宗化學品", _norm_chem(ym_chem.group(1)))
         if re.search(r"\.YM1_ORG_ARF\d*_DPT(?:_|\.)", tag):
             return ("排氣靜壓", "有機排氣靜壓")
+        # YM high-pressure dust collectors use DPC/"壓差值" wording instead
+        # of the generic "靜壓" text. HPDUST/HDUST is authoritative and these
+        # four monitoring points belong to the shared dry-dust static chart.
+        if ("HPDUST" in tag or eq.strip().upper().startswith("HDUST")) and (
+            "DPC" in tag or "DPT" in tag or "壓差" in str(description)
+        ):
+            return ("排氣靜壓", "乾式集塵靜壓")
 
     # HF 的 EQNAME 以尾碼 _1／_2 表示同化學品的不同槽。圖表仍依化學品
     # 跨廠合併，槽號只作為 HF 廠內的線別後綴，避免兩槽資料互相覆蓋。
