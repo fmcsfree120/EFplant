@@ -72,6 +72,16 @@ CATEGORIES = [
 
 
 RECOVERY_DISPLAY_MIN_SECONDS = 30 * 60
+TOP10_EXCLUDED_STATUSES = frozenset({"OK", "HI", "LO"})
+
+
+def filter_top10_alarm_entries(alarms: pd.DataFrame) -> pd.DataFrame:
+    """Keep alarm-entry states counted by both operational-risk TOP 10 panels."""
+    if alarms.empty or "ALM_ALMSTATUS" not in alarms.columns:
+        return alarms.copy()
+    statuses = alarms["ALM_ALMSTATUS"].fillna("").astype(str).str.strip().str.upper()
+    statuses = statuses.replace({"H": "HI", "L": "LO"})
+    return alarms.loc[~statuses.isin(TOP10_EXCLUDED_STATUSES)].copy()
 
 
 def select_recovery_top_records(recovered: pd.DataFrame, limit: int = 10) -> pd.DataFrame:
@@ -103,6 +113,10 @@ def build_recovery_events(alarms: pd.DataFrame, window_start: pd.Timestamp,
         for _, row in history.iterrows():
             status = str(row["ALM_ALMSTATUS"]).strip().upper()
             event_time = row["TIME"]
+            # TOP 10 panels share the management-report alarm scope: HI/LO are
+            # informational states and must never open a recovery segment.
+            if status in {"HI", "LO"}:
+                continue
             if status == "OK":
                 if active_start is not None:
                     event = row.to_dict()
@@ -344,7 +358,9 @@ def build_kf1_alarm_dashboard(script_dir: str, plant: str = "KF1") -> str:
 
         status_weights = {"HIHI": 5, "LOLO": 5, "HI": 3, "LO": 3, "CFN": 2, "OK": 0}
         # 兩個 TOP 10 與熱區固定以本次成功同步時間往前 24 小時計算。
-        work = top10_alarms.sort_values("TIME").copy()
+        # Both TOP 10 panels count only actual alarm-entry records. OK is a
+        # recovery marker, while HI/LO are outside the comparison scope.
+        work = filter_top10_alarm_entries(top10_alarms).sort_values("TIME")
         work["RISK_POINTS"] = work["ALM_ALMSTATUS"].map(status_weights).fillna(1)
         work.loc[work["ALM_ALMPRIORITY"] == "CRITICAL", "RISK_POINTS"] += 4
         # VALUE represents the first alarm-entry value, never an OK recovery
@@ -903,7 +919,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'ym-hdust-equipment-only-20260824-1';
+var CACHE_EPOCH = 'alarm-top10-status-filter-20260830-1';
 
 (function resetOldFrontendCache() {
   try {
@@ -1223,7 +1239,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=ym-hdust-equipment-only-20260824-1', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=alarm-top10-status-filter-20260830-1', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
