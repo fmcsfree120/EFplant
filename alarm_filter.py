@@ -103,8 +103,21 @@ def pcb_static_pressure_exclusion_mask(frame: pd.DataFrame) -> pd.Series:
         return pd.Series(False, index=frame.index)
     plants = frame[PLANT_COLUMN].fillna("").astype(str).str.strip().str.upper()
     tags = frame[ALARM_TAG_COLUMN].fillna("").astype(str).map(_normalise_alarm_text)
-    normalized_targets = tuple(_normalise_alarm_text(tag) for tag in PCB_STATIC_PRESSURE_EXCLUDE_TAGS)
-    return plants.eq("PCB") & tags.map(lambda tag: any(target in tag for target in normalized_targets))
+    return pd.Series(
+        [is_pcb_static_pressure_excluded(plant, tag) for plant, tag in zip(plants, tags)],
+        index=frame.index,
+    )
+
+
+def is_pcb_static_pressure_excluded(plant: object, tag: object) -> bool:
+    """Shared all-surface exclusion for five PCB static-pressure points."""
+    if str(plant).strip().upper() != "PCB":
+        return False
+    normalized_tag = _normalise_alarm_text(tag)
+    return any(
+        _normalise_alarm_text(target) in normalized_tag
+        for target in PCB_STATIC_PRESSURE_EXCLUDE_TAGS
+    )
 
 
 def excluded_alarm_description(description: object) -> bool:

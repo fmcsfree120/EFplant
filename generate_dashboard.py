@@ -14,7 +14,7 @@ from Crypto.Random import get_random_bytes
 from Crypto.Protocol.KDF import PBKDF2
 from Crypto.Hash import SHA256
 from Crypto.Util.Padding import pad
-from alarm_filter import filter_alarm_records
+from alarm_filter import filter_alarm_records, is_pcb_static_pressure_excluded
 
 # ── 強制 stdout/stderr 以 UTF-8 輸出 ────────────────────────────────
 # Windows 主控台預設為 cp950(Big5)，print 中文或 emoji 時可能拋出
@@ -161,12 +161,16 @@ S2A_POWER_EQUIPMENT_EXCLUDE_TAGS = frozenset({
 
 
 def exclude_non_equipment_dashboard_rows(frame: pd.DataFrame) -> pd.DataFrame:
-    """Remove trend-only points before building RUN/STOP equipment cards."""
+    """Remove non-equipment and globally excluded points before equipment cards."""
     if frame.empty or "PLANT" not in frame.columns:
         return frame.copy()
     tags = frame.get("TAGNAME", pd.Series("", index=frame.index)).fillna("").astype(str).str.strip().str.upper()
     plants = frame["PLANT"].fillna("").astype(str).str.strip().str.upper()
     excluded = plants.eq("S2A") & tags.isin(S2A_POWER_EQUIPMENT_EXCLUDE_TAGS)
+    excluded |= pd.Series(
+        [is_pcb_static_pressure_excluded(plant, tag) for plant, tag in zip(plants, tags)],
+        index=frame.index,
+    )
     return frame.loc[~excluded].copy()
 
 
@@ -919,7 +923,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'alarm-top10-status-filter-20260830-1';
+var CACHE_EPOCH = 'pcb-static-pressure-full-exclude-20260831-1';
 
 (function resetOldFrontendCache() {
   try {
@@ -1239,7 +1243,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=alarm-top10-status-filter-20260830-1', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=pcb-static-pressure-full-exclude-20260831-1', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
@@ -1514,6 +1518,8 @@ def classify_quality_row(tagname, eqname, plant="", description=""):
     if plant_code == "KF":
         plant_code = "KF1"
     if plant_code and plant_code not in FRONTEND_TREND_PLANTS:
+        return (None, None)
+    if is_pcb_static_pressure_excluded(plant_code, tag):
         return (None, None)
     if tag in FRONTEND_TREND_EXCLUDE_TAGS:
         return (None, None)
