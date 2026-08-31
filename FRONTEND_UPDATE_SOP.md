@@ -387,6 +387,11 @@ generator. `main.py` reloads `generate_dashboard.py` from disk for every
 dashboard rebuild, so frontend source edits take effect without restarting the
 resident scheduler.
 
+The reloaded generator must also reload `alarm_filter.py` at the same boundary.
+Otherwise a resident process can retain the old filter module while loading a
+new generator that expects newly added shared exclusion helpers, causing data
+fetch to succeed but dashboard generation and `health.json` publication to stop.
+
 Two release guards are mandatory:
 
 - `main.py` compares the generator `CACHE_EPOCH` with the generated

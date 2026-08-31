@@ -9,12 +9,20 @@ import socket
 import re
 import html
 import csv
+import importlib
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
 from Crypto.Protocol.KDF import PBKDF2
 from Crypto.Hash import SHA256
 from Crypto.Util.Padding import pad
-from alarm_filter import filter_alarm_records, is_pcb_static_pressure_excluded
+import alarm_filter as _alarm_filter
+
+# main.py reloads this generator on every dashboard rebuild. Reload the shared
+# filter module at the same boundary so a resident scheduler never keeps an old
+# alarm_filter that lacks newly deployed exclusion helpers.
+_alarm_filter = importlib.reload(_alarm_filter)
+filter_alarm_records = _alarm_filter.filter_alarm_records
+is_pcb_static_pressure_excluded = _alarm_filter.is_pcb_static_pressure_excluded
 
 # ── 強制 stdout/stderr 以 UTF-8 輸出 ────────────────────────────────
 # Windows 主控台預設為 cp950(Big5)，print 中文或 emoji 時可能拋出
@@ -923,7 +931,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'pcb-static-pressure-full-exclude-20260831-1';
+var CACHE_EPOCH = 'pcb-static-pressure-full-exclude-20260831-2';
 
 (function resetOldFrontendCache() {
   try {
@@ -1243,7 +1251,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=pcb-static-pressure-full-exclude-20260831-1', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=pcb-static-pressure-full-exclude-20260831-2', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
