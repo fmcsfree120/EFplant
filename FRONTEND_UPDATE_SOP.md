@@ -538,3 +538,17 @@ trend compilation, or frontend navigation generation.
   cryptographically separate dashboard and inspection payloads. If page data
   confidentiality becomes a requirement, stop and split the encrypted payloads
   before treating role-based hiding as a security boundary.
+
+
+## 2026-09-11 環保排廢與洗滌塔趨勢
+
+- 「廢水處理」前台按鍵更名為「環保排廢」，保留既有出口 pH，新增跨廠塔壓差（Pa）、循環水流量（CMH）、循環水pH 三張圖。內部既有廢水頁 key 保持相容。
+- EQNAME 塔身壓差／塔壓差、循環水流量、洗滌塔PH／循環水PH 優先分類為洗滌塔；舊列無 EQNAME 時僅採明確洗滌塔描述或 SCR Tag，不以 AIR 泛稱推定。既有排除清單維持優先。
+- 各 Tag 保留獨立曲線及原始值正負號，壓差／流量不套用 pH 的 0～14 軸。
+- 使用者確認洗滌塔三類暫不納入週報，在週報資料入口排除，不進入趨勢、預警、排名、資料品質或建議；既有廢水出口 pH 維持。
+
+## 2026-09-11 洗滌塔趨勢依廠區切換
+
+- 「環保排廢」的洗滌塔塔壓差、循環水流量、循環水pH 共用一列廠區代號按鍵；每次只顯示所選廠區的三類曲線，避免全廠 70～80 條曲線同圖造成圖例與數據難以辨識。
+- 廠區按鍵只顯示至少有一種洗滌塔資料的廠區，依前台既有廠區順序排列；切換時三類圖同步更新。某廠缺少其中一類來源時不製造空白曲線或假資料。
+- 既有「廢水出口pH」仍維持跨廠比較，不受洗滌塔廠區按鍵影響。桌面與手機版均須驗證按鍵狀態、圖表標題、曲線廠區隔離及圖例不與時間軸重疊。

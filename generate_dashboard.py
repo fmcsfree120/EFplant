@@ -931,7 +931,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'pcb-static-pressure-full-exclude-20260831-2';
+var CACHE_EPOCH = 'scrubber-plant-switch-20260911-1';
 
 (function resetOldFrontendCache() {
   try {
@@ -1251,7 +1251,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=pcb-static-pressure-full-exclude-20260831-2', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=scrubber-plant-switch-20260911-1', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
@@ -1514,6 +1514,28 @@ FRONTEND_TREND_EXCLUDE_TAGS = frozenset({
 })
 
 
+def scrubber_chart_key(tagname, eqname, description=""):
+    """Recognize scrubber measurements before generic AIR/static-pressure rules."""
+    eq = str(eqname).strip().upper()
+    tag = str(tagname).strip().upper()
+    text = f"{eq} {description}".upper()
+    aliases = {"塔身壓差": "塔壓差", "塔壓差": "塔壓差",
+               "循環水流量": "循環水流量", "洗滌塔PH": "循環水pH",
+               "循環水PH": "循環水pH"}
+    if eq in aliases:
+        return aliases[eq]
+    # Older rows may lack EQNAME; only accept explicit scrubber context.
+    if "洗滌塔" not in text and not re.search(r"[ABVH]SCR", tag):
+        return None
+    if "塔身壓差" in text or "塔壓差" in text or "DIFFERENTIAL" in tag:
+        return "塔壓差"
+    if "PH" in text or re.search(r"_PH(?:_|\.)", tag):
+        return "循環水pH"
+    if "循環水流量" in text or "泵浦流量" in text or "泵浦運轉流量" in text:
+        return "循環水流量"
+    return None
+
+
 def classify_quality_row(tagname, eqname, plant="", description=""):
     """趨勢圖資料分類唯一入口。回傳 (category, series_name)：
       category    : '大宗化學品' | '空壓效率' | '冰機效率' | '廠區用電' | '排氣靜壓' | None
@@ -1531,6 +1553,10 @@ def classify_quality_row(tagname, eqname, plant="", description=""):
         return (None, None)
     if tag in FRONTEND_TREND_EXCLUDE_TAGS:
         return (None, None)
+
+    scrubber_name = scrubber_chart_key(tag, eq, description)
+    if scrubber_name:
+        return ("洗滌塔", scrubber_name)
 
     # HJ2 五支 FIX.* 歷史 Tag 明確併入既有酸排、鹼排、乾式集塵靜壓圖表，
     # 與其他廠區依設備型式分類的原則一致。
@@ -1814,6 +1840,12 @@ def compile_quality_data(script_dir, force_base_time=None):
                     water_actual_data[("供水導電度", label, hr_str)] = cond
                 continue
 
+            if category == "洗滌塔":
+                # Full Tag keeps each instrument separate, including parallel pumps.
+                label = f"{plant} {tagname.removesuffix('.F_CV')}"
+                waste_actual_data[(series_name, label, hr_str)] = float(row['VALUE'])
+                continue
+
             if category == "廢水處理":
                 # 目前皆為中和暫存 pH → 同一張『中和PH』圖，各廠區為線
                 chart = waste_chart_key(eqname)
@@ -1996,6 +2028,8 @@ def compile_quality_data(script_dir, force_base_time=None):
     water_names, water_cs = _build_label_series(water_split)
     water_series = {f"water_{nm}": s for nm, s in water_cs.items()}
     waste_names, waste_cs = _build_label_series(waste_actual_data)
+    waste_order = ["出口pH", "塔壓差", "循環水流量", "循環水pH"]
+    waste_names.sort(key=lambda name: waste_order.index(name) if name in waste_order else len(waste_order))
     waste_series = {f"waste_{nm}": s for nm, s in waste_cs.items()}
 
     metrics = {
@@ -2673,7 +2707,7 @@ def create_status_dashboard(df: pd.DataFrame, output_path: str = "index.html"):
     <button class="tab-btn" onclick="switchMetric('排氣靜壓', this)">排氣靜壓</button>
     <button class="tab-btn" onclick="switchMetric('大宗化學品', this)">大宗化學品</button>
     <button class="tab-btn" onclick="switchMetric('供應水質', this)">供應水質</button>
-    <button class="tab-btn" onclick="switchMetric('廢水處理', this)">廢水處理</button>
+    <button class="tab-btn" onclick="switchMetric('廢水處理', this)">環保排廢</button>
   </div>
 
   <!-- 折線圖面板 -->
@@ -3159,6 +3193,18 @@ footer{{
   border-color: var(--bd2);
   color: var(--tx);
 }}
+.scrubber-plant-picker {{
+  display:flex;flex-wrap:wrap;align-items:center;gap:6px;
+  margin:15px 0 2px;padding:12px;
+  background:var(--sf);border:1px solid var(--bd2);border-radius:6px;
+}}
+.scrubber-plant-label {{color:var(--dim);font-size:.74rem;font-weight:700;margin-right:4px;}}
+.scrubber-plant-btn {{
+  min-width:48px;padding:6px 11px;background:transparent;border:1px solid var(--bd2);
+  border-radius:4px;color:var(--dim);font-size:.75rem;font-weight:800;cursor:pointer;
+}}
+.scrubber-plant-btn.active {{background:var(--blue);border-color:var(--blue);color:#fff;}}
+.scrubber-empty {{margin-top:15px;padding:24px;text-align:center;color:var(--dim);border:1px solid var(--bd2);border-radius:6px;}}
 .chart-card {{
   background: var(--sf);
   border: 1px solid var(--bd);
@@ -3839,7 +3885,7 @@ var wasteNames = {waste_names_json};
 // 如需美化其他化學品標題，於此增列即可。
 var CHEM_DISPLAY = {{ 'NA2CO3': 'NaCO3', 'NACLO3': 'NaClO3', 'CM2250R': 'CM-2250R', 'CS9110R': 'CS-9110R' }};
 var WATER_DISPLAY = {{ '供水導電度高': '供水導電度 ＞1 (µS/cm)', '供水導電度低': '供水導電度 ＜1 (µS/cm)' }};
-var WASTE_DISPLAY = {{ '出口pH': '出口pH' }};
+var WASTE_DISPLAY = {{ '出口pH': '廢水出口pH', '塔壓差': '洗滌塔塔壓差 (Pa)', '循環水流量': '洗滌塔循環水流量 (CMH)', '循環水pH': '洗滌塔循環水pH' }};
 var chemChartInstances = [];
 
 function initChart() {{
@@ -3853,10 +3899,10 @@ function initChart() {{
   updateMetricUI();
 }}
 
-function buildChartOption(metricName, legendH) {{
+function buildChartOption(metricName, legendH, metricDataOverride) {{
   if (!chartTimestamps.length) return null;
 
-  var metricData = chartSeriesData[metricName] || {{}};
+  var metricData = metricDataOverride || chartSeriesData[metricName] || {{}};
 
   // 線別 key 可能是廠區、廠區+濃度，或靜壓的「廠區-設備編號」。
   // 依 metricData 既有 key 動態取出真正有數據者；顏色以廠區前綴對應，
@@ -3912,7 +3958,11 @@ function buildChartOption(metricName, legendH) {{
   else if (isStatic) metaKey = '排氣靜壓';
   else if (isWater) metaKey = '供應水質';
   else if (isWaste) metaKey = '廢水處理';
-  const meta = METRIC_METADATA[metaKey];
+  var meta = METRIC_METADATA[metaKey];
+  if (metricName === 'waste_塔壓差' || metricName === 'waste_循環水流量') {{
+    meta = {{unit: metricName === 'waste_塔壓差' ? 'Pa' : 'CMH',
+             precision: 2, controlVal: 0, warningValNum: 0, allowNegative: true}};
+  }}
   if (!meta) return null;
 
   // 多子圖類別（大宗化學品 / 排氣靜壓）不顯示控制線（黃色預警虛線與綠色正常虛線）
@@ -3998,7 +4048,7 @@ function buildChartOption(metricName, legendH) {{
       bottom: (legendH != null ? legendH + 58 : 85),
       left: 55,
       right: 25,
-      containLabel: false
+      containLabel: isWaste && metricName !== 'waste_出口pH'
     }},
     xAxis: {{
       type: 'category',
@@ -4136,7 +4186,8 @@ function buildChartOption(metricName, legendH) {{
     legend: {{
       show: true,
       selectedMode: 'multiple',
-      bottom: 8,
+      top: isWaste && metricName !== 'waste_出口pH' ? 315 : undefined,
+      bottom: isWaste && metricName !== 'waste_出口pH' ? undefined : 8,
       left: 'center',
       itemWidth: 10,
       itemHeight: 10,
@@ -4244,6 +4295,7 @@ function renderMultiCharts(opts) {{
   chemChartInstances.forEach(function(c) {{ c.dispose(); }});
   chemChartInstances = [];
   container.innerHTML = '';
+  if (opts.headerHtml) container.insertAdjacentHTML('beforeend', opts.headerHtml);
 
   if (!opts.names || opts.names.length === 0) return;
 
@@ -4251,6 +4303,13 @@ function renderMultiCharts(opts) {{
     var metricKey = opts.prefix + cn;
     var metricData = chartSeriesData[metricKey];
     if (!metricData) return;
+    if (opts.seriesFilter) {{
+      var filteredData = {{}};
+      Object.keys(metricData).forEach(function(key) {{
+        if (opts.seriesFilter(cn, key)) filteredData[key] = metricData[key];
+      }});
+      metricData = filteredData;
+    }}
 
     // 檢查是否有任何線別(廠區/廠區+濃度)真正擁有數據
     var hasData = Object.keys(metricData).some(function(k) {{
@@ -4276,7 +4335,7 @@ function renderMultiCharts(opts) {{
         '<button class="zoom-btn" onclick="zoomRange(&apos;6h&apos;, this, &apos;chem-' + idx + '&apos;)">6h</button>' +
         '</div>';
     var disp = (opts.displayMap && opts.displayMap[cn]) || cn;
-    var titleText = opts.title || (disp + opts.titleSuffix);
+    var titleText = opts.titleBuilder ? opts.titleBuilder(cn, disp) : (opts.title || (disp + opts.titleSuffix));
     var subtitleText = (opts.subtitle !== undefined) ? opts.subtitle : ('各廠區 ' + disp + opts.subtitleSuffix);
     var subtitleHtml = subtitleText ? '<div class="chart-subtitle">' + subtitleText + '</div>' : '';
     header.innerHTML = '<div class="chart-title-group"><div class="chart-title">' + titleText + '</div>' + subtitleHtml + '</div>' + controlsHtml;
@@ -4295,6 +4354,10 @@ function renderMultiCharts(opts) {{
       return v && v.some(function(x) {{ return x !== null && x !== undefined; }});
     }});
     var legendH = _legendH(activeKeys, chartDiv.clientWidth || container.clientWidth);
+    if (opts.prefix === 'waste_' && cn !== '出口pH') {{
+      // Reserve actual legend row spacing on narrow screens; keep it below X labels.
+      legendH = Math.ceil(legendH / 22) * 26;
+    }}
     // 繪圖區基本高約 240px；供水導電度＜1 因低值曲線密集，加高繪圖區(約 520px)以降低重疊、利於判讀
     var plotBase = (cn === '供水導電度低') ? 520 : 240;
     // 固定繪圖區與 X 軸/圖例間距；只有圖例實際行數增加時才等量增高容器。
@@ -4303,7 +4366,7 @@ function renderMultiCharts(opts) {{
     // 初始化 ECharts 並設定選項
     var chart = echarts.init(chartDiv);
     chemChartInstances.push(chart);
-    var option = buildChartOption(metricKey, legendH);
+    var option = buildChartOption(metricKey, legendH, metricData);
     if (option) {{
       chart.setOption(option, true);
       setupLegendSelectionMode(chart, activeKeys);
@@ -4341,10 +4404,38 @@ function renderWaterCharts() {{
   }});
 }}
 
+var selectedScrubberPlant = null;
+function scrubberPlants() {{
+  var found = {{}};
+  ['塔壓差','循環水流量','循環水pH'].forEach(function(name) {{
+    var data = chartSeriesData['waste_' + name] || {{}};
+    Object.keys(data).forEach(function(key) {{ found[key.split(' ')[0]] = true; }});
+  }});
+  return Object.keys(found).sort(function(a,b) {{
+    var order = ['T2A','S2A','PCB','S2','S3','HJ1','HJ2','LC2','LC3','TH','HF','YM','KF1'];
+    return order.indexOf(a) - order.indexOf(b);
+  }});
+}}
+
+function selectScrubberPlant(plant) {{
+  selectedScrubberPlant = plant;
+  renderWasteCharts();
+}}
+
 function renderWasteCharts() {{
+  var plants = scrubberPlants();
+  if (!selectedScrubberPlant || plants.indexOf(selectedScrubberPlant) === -1) selectedScrubberPlant = plants[0] || null;
+  var buttons = plants.map(function(plant) {{
+    return '<button class="scrubber-plant-btn' + (plant === selectedScrubberPlant ? ' active' : '') +
+      '" onclick="selectScrubberPlant(&apos;' + plant + '&apos;)">' + plant + '</button>';
+  }}).join('');
+  var picker = '<div class="scrubber-plant-picker"><span class="scrubber-plant-label">洗滌塔廠區：</span>' + buttons + '</div>';
   renderMultiCharts({{
     names: wasteNames, prefix: 'waste_', container: 'trend-waste-container',
-    title: '廢水處理出口pH趨勢圖', subtitle: '',
+    headerHtml: picker,
+    seriesFilter: function(name, key) {{ return name === '出口pH' || key.split(' ')[0] === selectedScrubberPlant; }},
+    titleBuilder: function(name, display) {{ return name === '出口pH' ? display + ' 趨勢圖' : selectedScrubberPlant + ' ' + display + ' 趨勢圖'; }},
+    subtitle: '',
     titleSuffix: ' 趨勢圖', subtitleSuffix: '',
     displayMap: WASTE_DISPLAY
   }});
