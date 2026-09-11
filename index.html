@@ -397,7 +397,7 @@ var _efpDk = null;
 var _efpLastUpdated = null;
 var _efpPollStarted = false;
 var LOGIN_AUDIT_ENABLED = false;
-var CACHE_EPOCH = 'viewer-account-20260910-1';
+var CACHE_EPOCH = 'environment-scrubber-20260911-1';
 
 (function resetOldFrontendCache() {
   try {
@@ -717,7 +717,7 @@ function clearAndReload() {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js?v=viewer-account-20260910-1', {updateViaCache:'none'}).catch(function(){});
+  navigator.serviceWorker.register('./service-worker.js?v=environment-scrubber-20260911-1', {updateViaCache:'none'}).catch(function(){});
 }
 </script>
 </body>
